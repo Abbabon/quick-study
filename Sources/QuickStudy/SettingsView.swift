@@ -5,6 +5,7 @@ import Shared
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @AppStorage("enterBehavior") private var enterBehaviorRaw: String = EnterBehavior.copyName.rawValue
+    @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
     var body: some View {
         Form {
@@ -18,6 +19,21 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.inline)
+            }
+            Section("Appearance") {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("UI Scale:")
+                        Spacer()
+                        Text("\(Int((uiScaleValue * 100).rounded()))%")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    Slider(value: $uiScaleValue, in: UIScale.minValue ... UIScale.maxValue, step: 0.05)
+                    Text("Applies the next time you open the search panel.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
             Section("Database") {
                 HStack {
