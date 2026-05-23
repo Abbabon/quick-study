@@ -4,6 +4,7 @@ import SwiftUI
 /// A borderless, floating, non-activating NSPanel with vibrancy — the Spotlight look.
 final class PanelController: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
+    private var panelScale: Double = UIScale.defaultValue
     private let model: AppModel
 
     init(model: AppModel) {
@@ -19,7 +20,15 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        if panel == nil { panel = makePanel() }
+        let currentScale = UIScale.current().value
+        if let existing = panel, currentScale != panelScale {
+            existing.orderOut(nil)
+            panel = nil
+        }
+        if panel == nil {
+            panel = makePanel()
+            panelScale = currentScale
+        }
         guard let panel = panel else { return }
         centerOnActiveScreen(panel)
         panel.makeKeyAndOrderFront(nil)
@@ -31,7 +40,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func makePanel() -> NSPanel {
-        let size = NSSize(width: 900, height: 560)
+        let scale = UIScale.current()
+        let size = NSSize(width: scale.size(900), height: scale.size(560))
         let panel = SpotlightPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
