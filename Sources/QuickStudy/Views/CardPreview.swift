@@ -20,7 +20,7 @@ struct CardPreview: View {
     private func content(card: Card) -> some View {
         HStack(alignment: .top, spacing: 16) {
             cardImage(for: card.id)
-                .frame(maxWidth: 220, maxHeight: 320)
+                .frame(maxWidth: 330, maxHeight: 480)
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(card.name).font(.title3).bold()

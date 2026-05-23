@@ -31,7 +31,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func makePanel() -> NSPanel {
-        let size = NSSize(width: 760, height: 460)
+        let size = NSSize(width: 900, height: 560)
         let panel = SpotlightPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],

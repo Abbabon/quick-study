@@ -15,7 +15,7 @@ struct SearchPanel: View {
             Divider().opacity(0.3)
             content
         }
-        .frame(minWidth: 720, minHeight: 420)
+        .frame(minWidth: 860, minHeight: 520)
         .onAppear { searchFocused = true }
         .onExitCommand(perform: onDismiss)
     }
