@@ -32,18 +32,20 @@ struct ResultList: View {
         let mini: Card.Mini
         let selected: Bool
         let onTap: () -> Void
+        @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
         var body: some View {
-            HStack(spacing: 10) {
+            let scale = UIScale(value: uiScaleValue)
+            return HStack(spacing: scale.pad(10)) {
                 Thumbnail(id: mini.id)
-                    .frame(width: 28, height: 40)
+                    .frame(width: scale.size(28), height: scale.size(40))
                 Text(mini.name)
                     .lineLimit(1)
-                    .font(.system(size: 14))
+                    .font(scale.font(14))
                 Spacer(minLength: 4)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
+            .padding(.horizontal, scale.pad(10))
+            .padding(.vertical, scale.pad(4))
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(selected ? Color.accentColor.opacity(0.25) : .clear)

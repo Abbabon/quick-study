@@ -4,42 +4,46 @@ import Shared
 
 struct CardPreview: View {
     let card: Card?
+    @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
     var body: some View {
-        Group {
+        let scale = UIScale(value: uiScaleValue)
+        return Group {
             if let card = card {
-                content(card: card)
+                content(card: card, scale: scale)
             } else {
                 Color.clear
             }
         }
-        .padding(16)
+        .padding(scale.pad(16))
     }
 
     @ViewBuilder
-    private func content(card: Card) -> some View {
-        HStack(alignment: .top, spacing: 16) {
+    private func content(card: Card, scale: UIScale) -> some View {
+        HStack(alignment: .top, spacing: scale.pad(16)) {
             cardImage(for: card.id)
                 .frame(maxWidth: 330, maxHeight: 480)
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: scale.pad(8)) {
                 HStack {
-                    Text(card.name).font(.title3).bold()
+                    Text(card.name).font(scale.font(17, weight: .bold))
                     Spacer()
                     if let cost = card.manaCost {
-                        Text(cost).font(.system(.body, design: .monospaced)).foregroundStyle(.secondary)
+                        Text(cost)
+                            .font(scale.font(13, design: .monospaced))
+                            .foregroundStyle(.secondary)
                     }
                 }
                 if let type = card.typeLine {
-                    Text(type).font(.subheadline).foregroundStyle(.secondary)
+                    Text(type).font(scale.font(12)).foregroundStyle(.secondary)
                 }
                 if let text = card.oracleText, !text.isEmpty {
                     Text(text)
-                        .font(.system(size: 13))
+                        .font(scale.font(13))
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let p = card.power, let t = card.toughness {
-                    Text("\(p) / \(t)").font(.footnote).foregroundStyle(.secondary)
+                    Text("\(p) / \(t)").font(scale.font(11)).foregroundStyle(.secondary)
                 }
                 Spacer()
             }

@@ -8,6 +8,7 @@ struct SearchPanel: View {
 
     @FocusState private var searchFocused: Bool
     @AppStorage("enterBehavior") private var enterBehaviorRaw: String = EnterBehavior.copyName.rawValue
+    @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,21 +22,22 @@ struct SearchPanel: View {
     }
 
     private var searchField: some View {
-        HStack(spacing: 8) {
+        let scale = UIScale(value: uiScaleValue)
+        return HStack(spacing: scale.pad(8)) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-                .font(.system(size: 18, weight: .medium))
+                .font(scale.font(18, weight: .medium))
             TextField("Search MTG cards…", text: $model.query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 22, weight: .light))
+                .font(scale.font(22, weight: .light))
                 .focused($searchFocused)
                 .onChange(of: model.query) { model.runSearch() }
                 .onSubmit { handleEnter() }
                 .onKeyPress(.upArrow) { model.selectPrev(); return .handled }
                 .onKeyPress(.downArrow) { model.selectNext(); return .handled }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.horizontal, scale.pad(18))
+        .padding(.vertical, scale.pad(14))
     }
 
     @ViewBuilder
@@ -57,9 +59,10 @@ struct SearchPanel: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
+                let scale = UIScale(value: uiScaleValue)
                 HStack(spacing: 0) {
                     ResultList(model: model)
-                        .frame(width: 280)
+                        .frame(width: scale.size(280))
                     Divider().opacity(0.2)
                     CardPreview(card: model.selectedCard)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -82,10 +85,13 @@ struct SearchPanel: View {
     }
 
     private var placeholderHint: some View {
-        VStack(spacing: 8) {
-            Text("Type a card name").font(.title3).foregroundStyle(.secondary)
+        let scale = UIScale(value: uiScaleValue)
+        return VStack(spacing: scale.pad(8)) {
+            Text("Type a card name")
+                .font(scale.font(17))
+                .foregroundStyle(.secondary)
             Text("\(model.totalCards) cards • ↑↓ to navigate • Esc to close")
-                .font(.caption)
+                .font(scale.font(11))
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
