@@ -1,0 +1,101 @@
+import AppKit
+import SwiftUI
+
+/// A borderless, floating, non-activating NSPanel with vibrancy — the Spotlight look.
+final class PanelController: NSObject, NSWindowDelegate {
+    private var panel: NSPanel?
+    private let model: AppModel
+
+    init(model: AppModel) {
+        self.model = model
+    }
+
+    func toggle() {
+        if let panel = panel, panel.isVisible {
+            hide()
+        } else {
+            show()
+        }
+    }
+
+    func show() {
+        if panel == nil { panel = makePanel() }
+        guard let panel = panel else { return }
+        centerOnActiveScreen(panel)
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func hide() {
+        panel?.orderOut(nil)
+    }
+
+    private func makePanel() -> NSPanel {
+        let size = NSSize(width: 760, height: 460)
+        let panel = SpotlightPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = true
+        panel.becomesKeyOnlyIfNeeded = false
+        panel.isMovableByWindowBackground = true
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.hasShadow = true
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.delegate = self
+
+        let host = NSHostingView(rootView: SearchPanel(model: model, onDismiss: { [weak self] in self?.hide() }))
+        host.frame = NSRect(origin: .zero, size: size)
+        host.autoresizingMask = [.width, .height]
+
+        let blur = NSVisualEffectView()
+        blur.material = .hudWindow
+        blur.blendingMode = .behindWindow
+        blur.state = .active
+        blur.wantsLayer = true
+        blur.layer?.cornerRadius = 14
+        blur.layer?.masksToBounds = true
+        blur.frame = NSRect(origin: .zero, size: size)
+        blur.autoresizingMask = [.width, .height]
+        blur.addSubview(host)
+
+        panel.contentView = blur
+        return panel
+    }
+
+    private func centerOnActiveScreen(_ panel: NSPanel) {
+        let screen = NSScreen.main ?? NSScreen.screens.first
+        guard let screenFrame = screen?.visibleFrame else { return }
+        let size = panel.frame.size
+        let origin = NSPoint(
+            x: screenFrame.midX - size.width / 2,
+            y: screenFrame.midY - size.height / 2 + screenFrame.height * 0.15
+        )
+        panel.setFrameOrigin(origin)
+    }
+
+    // MARK: - NSWindowDelegate
+
+    func windowDidResignKey(_ notification: Notification) {
+        // Auto-dismiss when the user clicks elsewhere.
+        hide()
+    }
+}
+
+/// NSPanel subclass that accepts key window status so the search field can receive input.
+private final class SpotlightPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    override func cancelOperation(_ sender: Any?) {
+        // Esc closes the panel.
+        orderOut(nil)
+    }
+}

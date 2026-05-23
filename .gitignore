@@ -1,0 +1,57 @@
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+Icon?
+
+# Swift Package Manager
+.build/
+.swiftpm/
+# Package.resolved is committed on purpose — it pins dependency versions for the app.
+
+# Xcode (in case anyone opens the package in Xcode)
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+*.xcresult
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcscmblueprint
+*.xccheckout
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build / release output
+build/
+dist/
+*.app
+*.dmg
+*.zip
+
+# Coverage / profiling
+*.profdata
+*.profraw
+
+# Logs
+*.log
+
+# Credentials (notarization, signing, etc. — never commit)
+*.p12
+*.cer
+*.provisionprofile
+AuthKey_*.p8
+notarization-credentials*
+.env
+.env.*
+
+# Claude Code / tooling state
+.claude/
