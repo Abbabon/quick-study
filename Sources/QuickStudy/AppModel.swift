@@ -13,6 +13,7 @@ final class AppModel: ObservableObject {
     @Published var dbState: DBState = .unknown
     @Published var totalCards: Int = 0
     @Published var lastRefresh: String?
+    @Published var imageCacheSizeFormatted: String = "—"
 
     let engine = SearchEngine()
     let fetcher = FetcherProcess()
@@ -48,6 +49,7 @@ final class AppModel: ObservableObject {
                 dbState = .ready
                 engine.load(try store.loadMinis())
             }
+            refreshImageCacheSize()
         } catch {
             dbState = .unknown
         }
@@ -88,6 +90,21 @@ final class AppModel: ObservableObject {
         let idx = results.firstIndex(where: { $0.id == selectedID }) ?? results.count
         let prev = max(idx - 1, 0)
         select(results[prev].id)
+    }
+
+    // MARK: - Image cache
+
+    func refreshImageCacheSize() {
+        let bytes = (try? ImageCache.size(at: Paths.imagesDir)) ?? 0
+        imageCacheSizeFormatted = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    /// Returns bytes freed. Refreshes the published formatted size.
+    @discardableResult
+    func clearImageCache() -> Int64 {
+        let freed = (try? ImageCache.clear(at: Paths.imagesDir)) ?? 0
+        refreshImageCacheSize()
+        return freed
     }
 
     // MARK: - Refresh

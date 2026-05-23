@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import KeyboardShortcuts
 import Shared
@@ -48,9 +49,36 @@ struct SettingsView: View {
                 }
                 refreshButtons
             }
+            Section("Cache") {
+                HStack {
+                    Text("Image cache:")
+                    Spacer()
+                    Text(model.imageCacheSizeFormatted).foregroundStyle(.secondary)
+                }
+                Button("Clear Image Cache…", role: .destructive) { confirmClearImageCache() }
+            }
         }
         .formStyle(.grouped)
         .frame(minWidth: 480, idealWidth: 480, minHeight: 380, idealHeight: 380)
+        .onAppear { model.refreshImageCacheSize() }
+    }
+
+    private func confirmClearImageCache() {
+        let alert = NSAlert()
+        alert.messageText = "Clear Image Cache?"
+        alert.informativeText = "This will delete \(model.imageCacheSizeFormatted) of cached card images. The card database is preserved — you can re-download images via Refresh Now."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Clear")
+        // Make "Clear" the destructive (non-default) button.
+        if alert.buttons.count >= 2 {
+            alert.buttons[1].hasDestructiveAction = true
+        }
+        let response = alert.runModal()
+        // First button = Cancel (.alertFirstButtonReturn), second = Clear.
+        if response == .alertSecondButtonReturn {
+            model.clearImageCache()
+        }
     }
 
     @ViewBuilder
