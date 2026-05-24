@@ -11,12 +11,13 @@ struct SearchPanel: View {
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
     var body: some View {
-        VStack(spacing: 0) {
+        let scale = UIScale(value: uiScaleValue)
+        return VStack(spacing: 0) {
             searchField
             Divider().opacity(0.3)
             content
         }
-        .frame(minWidth: 860, minHeight: 520)
+        .frame(minWidth: scale.size(860), minHeight: scale.size(520))
         .onAppear { searchFocused = true }
         .onExitCommand(perform: onDismiss)
     }
@@ -72,14 +73,15 @@ struct SearchPanel: View {
     }
 
     private var refreshBanner: some View {
-        Group {
+        let scale = UIScale(value: uiScaleValue)
+        return Group {
             if case let .running(phase, done, total) = model.refreshState {
-                HStack(spacing: 8) {
+                HStack(spacing: scale.pad(8)) {
                     ProgressView().controlSize(.small)
-                    Text("\(phase) \(done)/\(total)").font(.caption).foregroundStyle(.secondary)
+                    Text("\(phase) \(done)/\(total)").font(scale.font(11)).foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 6)
+                .padding(.horizontal, scale.pad(18))
+                .padding(.vertical, scale.pad(6))
             }
         }
     }

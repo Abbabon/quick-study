@@ -84,11 +84,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         let screen = NSScreen.main ?? NSScreen.screens.first
         guard let screenFrame = screen?.visibleFrame else { return }
         let size = panel.frame.size
-        let origin = NSPoint(
-            x: screenFrame.midX - size.width / 2,
-            y: screenFrame.midY - size.height / 2 + screenFrame.height * 0.15
-        )
-        panel.setFrameOrigin(origin)
+        let rawX = screenFrame.midX - size.width / 2
+        let rawY = screenFrame.midY - size.height / 2 + screenFrame.height * 0.15
+        let clampedX = min(max(rawX, screenFrame.minX), screenFrame.maxX - size.width)
+        let clampedY = min(max(rawY, screenFrame.minY), screenFrame.maxY - size.height)
+        panel.setFrameOrigin(NSPoint(x: clampedX, y: clampedY))
     }
 
     // MARK: - NSWindowDelegate

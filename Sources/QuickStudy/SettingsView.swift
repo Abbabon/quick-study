@@ -56,6 +56,7 @@ struct SettingsView: View {
                     Text(model.imageCacheSizeFormatted).foregroundStyle(.secondary)
                 }
                 Button("Clear Image Cache…", role: .destructive) { confirmClearImageCache() }
+                    .disabled(model.refreshState != .idle)
             }
         }
         .formStyle(.grouped)
