@@ -2,9 +2,11 @@ import AppKit
 import SwiftUI
 
 /// A borderless, floating, non-activating NSPanel with vibrancy — the Spotlight look.
+@MainActor
 final class PanelController: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var panelScale: Double = UIScale.defaultValue
+    private var lastHiddenAt: Date?
     private let model: AppModel
 
     init(model: AppModel) {
@@ -30,6 +32,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             panelScale = currentScale
         }
         guard let panel = panel else { return }
+        clearSearchIfTimedOut()
         centerOnActiveScreen(panel)
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -37,6 +40,17 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func hide() {
         panel?.orderOut(nil)
+        lastHiddenAt = Date()
+    }
+
+    private func clearSearchIfTimedOut() {
+        guard let hiddenAt = lastHiddenAt else { return }
+        let stored = UserDefaults.standard.object(forKey: ClearSearchTimeout.storageKey) as? Double
+        let timeout = stored ?? ClearSearchTimeout.defaultValue
+        guard timeout > 0 else { return }
+        if Date().timeIntervalSince(hiddenAt) >= timeout {
+            model.resetSearchState()
+        }
     }
 
     private func makePanel() -> NSPanel {

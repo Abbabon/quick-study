@@ -7,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @AppStorage("enterBehavior") private var enterBehaviorRaw: String = EnterBehavior.copyName.rawValue
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
+    @AppStorage(ClearSearchTimeout.storageKey) private var clearSearchTimeoutSeconds: Double = ClearSearchTimeout.defaultValue
 
     var body: some View {
         Form {
@@ -17,6 +18,12 @@ struct SettingsView: View {
                 Picker("On Enter:", selection: $enterBehaviorRaw) {
                     ForEach(EnterBehavior.allCases) { b in
                         Text(b.label).tag(b.rawValue)
+                    }
+                }
+                .pickerStyle(.inline)
+                Picker("Clear search after:", selection: $clearSearchTimeoutSeconds) {
+                    ForEach(ClearSearchTimeout.allCases) { t in
+                        Text(t.label).tag(t.seconds)
                     }
                 }
                 .pickerStyle(.inline)

@@ -124,3 +124,30 @@ enum EnterBehavior: String, CaseIterable, Identifiable {
         }
     }
 }
+
+/// Preset durations for the "clear search on reopen" behavior.
+/// `seconds == 0` disables the auto-clear entirely.
+enum ClearSearchTimeout: Double, CaseIterable, Identifiable {
+    case never = 0
+    case thirtySeconds = 30
+    case oneMinute = 60
+    case fiveMinutes = 300
+    case fifteenMinutes = 900
+    case oneHour = 3600
+
+    static let storageKey = "clearSearchTimeout"
+    static let defaultValue: Double = ClearSearchTimeout.oneMinute.rawValue
+
+    var id: Double { rawValue }
+    var seconds: Double { rawValue }
+    var label: String {
+        switch self {
+        case .never: return "Never"
+        case .thirtySeconds: return "30 seconds"
+        case .oneMinute: return "1 minute"
+        case .fiveMinutes: return "5 minutes"
+        case .fifteenMinutes: return "15 minutes"
+        case .oneHour: return "1 hour"
+        }
+    }
+}

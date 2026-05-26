@@ -65,6 +65,14 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Clears all transient search UI state so the next show is a fresh session.
+    func resetSearchState() {
+        query = ""
+        selectedID = nil
+        selectedCard = nil
+        results = []
+    }
+
     func select(_ id: String) {
         selectedID = id
         if let cached = detailCache.object(forKey: id as NSString) {
