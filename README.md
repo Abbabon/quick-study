@@ -6,6 +6,8 @@ Named after [Quick Study](https://scryfall.com/search?q=%21%22Quick+Study%22), t
 
 Data is sourced from [Scryfall](https://scryfall.com/docs/api)'s free bulk-data API. No scraping, no subscriptions.
 
+<img width="1978" height="1232" alt="image" src="https://github.com/user-attachments/assets/436025a7-54da-4e5e-9ef4-9b31621f224c" />
+
 ## Requirements
 
 - macOS 14 or later
