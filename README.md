@@ -89,7 +89,7 @@ If you previously used the app under its earlier name (MTGSpotlight), the data d
 ├── Resources/
 │   ├── Info.plist
 │   ├── AppIcon.icns
-│   └── com.user.QuickStudy.refresh.plist   # weekly LaunchAgent template
+│   └── com.abbabon.quickstudy.refresh.plist   # weekly LaunchAgent template
 ├── scripts/
 │   ├── build-app.sh
 │   └── generate-icon.py
