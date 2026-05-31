@@ -15,6 +15,18 @@ Data is sourced from [Scryfall](https://scryfall.com/docs/api)'s free bulk-data 
 - Python 3 with Pillow (only to regenerate the app icon)
 - ~5 GB free disk for the full image cache (optional — you can start with cards-only)
 
+## Install via Homebrew
+
+On an Apple Silicon Mac:
+
+```sh
+brew install --cask --no-quarantine Abbabon/quick-study/quick-study
+```
+
+`--no-quarantine` is required because the app is ad-hoc signed (not notarized);
+without it macOS Gatekeeper refuses to open it. On first launch, grant
+Accessibility permission so the global hotkey works.
+
 ## Build & run
 
 ```sh
