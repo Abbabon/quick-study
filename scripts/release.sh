@@ -96,7 +96,7 @@ gh release create "$TAG" "$ZIP" \
 
 Install:
 \`\`\`sh
-brew install --cask --no-quarantine $TAP_REF
+brew install --cask $TAP_REF
 \`\`\`"
 
 # --- update tap ---
@@ -121,6 +121,16 @@ cask "quick-study" do
 
   app "$APP_NAME.app"
 
+  # The app is ad-hoc signed (not notarized). Homebrew quarantines downloads and
+  # no longer offers --no-quarantine, so strip the quarantine attribute here or
+  # Gatekeeper would refuse to open it. must_succeed: false because xattr exits
+  # non-zero for nested files that never had the attribute.
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args:         ["-dr", "com.apple.quarantine", "#{appdir}/$APP_NAME.app"],
+                   must_succeed: false
+  end
+
   zap trash: [
     "~/Library/Application Support/QuickStudy",
     "~/Library/Logs/QuickStudy",
@@ -134,4 +144,4 @@ git -C "$TAP_DIR" commit -m "quick-study $VERSION"
 git -C "$TAP_DIR" push origin HEAD
 
 echo "==> Done. Install with:"
-echo "    brew install --cask --no-quarantine $TAP_REF"
+echo "    brew install --cask $TAP_REF"

@@ -20,11 +20,11 @@ Data is sourced from [Scryfall](https://scryfall.com/docs/api)'s free bulk-data 
 On an Apple Silicon Mac:
 
 ```sh
-brew install --cask --no-quarantine Abbabon/quick-study/quick-study
+brew install --cask Abbabon/quick-study/quick-study
 ```
 
-`--no-quarantine` is required because the app is ad-hoc signed (not notarized);
-without it macOS Gatekeeper refuses to open it. On first launch, grant
+The app is ad-hoc signed (not notarized); the cask strips the macOS quarantine
+attribute on install so Gatekeeper allows it to open. On first launch, grant
 Accessibility permission so the global hotkey works.
 
 ## Build & run

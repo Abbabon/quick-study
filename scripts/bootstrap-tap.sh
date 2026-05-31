@@ -34,11 +34,11 @@ Spotlight-style Magic: The Gathering card lookup for macOS.
 ## Install
 
 ```sh
-brew install --cask --no-quarantine Abbabon/quick-study/quick-study
+brew install --cask Abbabon/quick-study/quick-study
 ```
 
-`--no-quarantine` is required: the app is ad-hoc signed (not notarized), so
-without it macOS Gatekeeper refuses to open it.
+The app is ad-hoc signed (not notarized); the cask strips the macOS quarantine
+attribute on install (in a `postflight` step) so Gatekeeper allows it to open.
 
 After installing, launch Quick Study and grant **Accessibility** permission when
 prompted (System Settings → Privacy & Security → Accessibility) so the global
