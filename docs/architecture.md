@@ -129,7 +129,7 @@ WAL journal mode, `synchronous = NORMAL`. Migrations via GRDB's `DatabaseMigrato
 
 Only the SQLite DB and image directory are shared state between the two executables. The app does not in-process the bulk JSON — it always shells out to the fetcher. This is the key design choice that makes the "separate scrape/cache flow" requirement clean:
 
-- The fetcher can be invoked from a `launchd` LaunchAgent (template at `Resources/com.user.QuickStudy.refresh.plist`) for weekly background refreshes, independent of the app being running.
+- The fetcher can be invoked from a `launchd` LaunchAgent (template at `Resources/com.abbabon.quickstudy.refresh.plist`) for weekly background refreshes, independent of the app being running.
 - The fetcher can be run from the command line during development, decoupled from any UI work.
 - The app starts fast (no parsing on launch), reads only what it needs (minis at startup, full rows on selection).
 
