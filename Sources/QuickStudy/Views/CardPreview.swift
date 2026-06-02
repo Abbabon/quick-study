@@ -4,6 +4,8 @@ import Shared
 
 struct CardPreview: View {
     let card: Card?
+    var isPinned: Bool = false
+    var onTogglePin: () -> Void = {}
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
     var body: some View {
@@ -24,7 +26,7 @@ struct CardPreview: View {
             cardImage(for: card.id)
                 .frame(maxWidth: 330, maxHeight: 480)
             VStack(alignment: .leading, spacing: scale.pad(8)) {
-                HStack {
+                HStack(spacing: scale.pad(8)) {
                     Text(card.name).font(scale.font(17, weight: .bold))
                     Spacer()
                     if let cost = card.manaCost {
@@ -32,6 +34,7 @@ struct CardPreview: View {
                             .font(scale.font(13, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
+                    pinButton(scale: scale)
                 }
                 if let type = card.typeLine {
                     Text(type).font(scale.font(12)).foregroundStyle(.secondary)
@@ -49,6 +52,17 @@ struct CardPreview: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private func pinButton(scale: UIScale) -> some View {
+        Button(action: onTogglePin) {
+            Image(systemName: isPinned ? "pin.fill" : "pin")
+                .font(scale.font(14, weight: .medium))
+                .foregroundStyle(isPinned ? Color.accentColor : .secondary)
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut("p", modifiers: .command)
+        .help(isPinned ? "Unpin (⌘P)" : "Pin (⌘P)")
     }
 
     @ViewBuilder

@@ -9,6 +9,7 @@ final class AppModel: ObservableObject {
     @Published var results: [Card.Mini] = []
     @Published var selectedID: String?
     @Published var selectedCard: Card?
+    @Published var pinned: [Card.Mini] = []
     @Published var refreshState: RefreshState = .idle
     @Published var dbState: DBState = .unknown
     @Published var totalCards: Int = 0
@@ -19,6 +20,10 @@ final class AppModel: ObservableObject {
     let fetcher = FetcherProcess()
     private var store: CardStore?
     private let detailCache = NSCache<NSString, CachedCard>()
+
+    /// Invoked (on the main actor) whenever the pinned set changes, so the panel
+    /// can resize to fit/free the pinned row without compromising the preview.
+    var onPinnedChange: (() -> Void)?
 
     enum DBState: Equatable {
         case unknown, empty, ready
@@ -34,6 +39,7 @@ final class AppModel: ObservableObject {
 
     init() {
         self.store = try? CardStore()
+        loadPins()
         refreshDBState()
     }
 
@@ -98,6 +104,57 @@ final class AppModel: ObservableObject {
         let idx = results.firstIndex(where: { $0.id == selectedID }) ?? results.count
         let prev = max(idx - 1, 0)
         select(results[prev].id)
+    }
+
+    // MARK: - Pins
+
+    private static let pinsDefaultsKey = "pinnedCards"
+
+    /// Persisted shape for a pinned card. `Card.Mini` isn't `Codable`, and storing
+    /// the name avoids a store read just to draw the pinned row.
+    private struct PinnedRef: Codable {
+        let id: String
+        let name: String
+    }
+
+    func isPinned(_ id: String) -> Bool {
+        pinned.contains { $0.id == id }
+    }
+
+    /// Toggles a card's pinned state, preserving insertion order, then persists.
+    func togglePin(_ mini: Card.Mini) {
+        if let idx = pinned.firstIndex(where: { $0.id == mini.id }) {
+            pinned.remove(at: idx)
+        } else {
+            pinned.append(mini)
+        }
+        persistPins()
+        onPinnedChange?()
+    }
+
+    /// Toggles the currently-previewed card. No-op when nothing is selected.
+    func togglePinSelected() {
+        guard let card = selectedCard else { return }
+        togglePin(Card.Mini(id: card.id, name: card.name))
+    }
+
+    func unpin(_ id: String) {
+        guard let idx = pinned.firstIndex(where: { $0.id == id }) else { return }
+        pinned.remove(at: idx)
+        persistPins()
+        onPinnedChange?()
+    }
+
+    private func persistPins() {
+        let refs = pinned.map { PinnedRef(id: $0.id, name: $0.name) }
+        guard let data = try? JSONEncoder().encode(refs) else { return }
+        UserDefaults.standard.set(data, forKey: Self.pinsDefaultsKey)
+    }
+
+    private func loadPins() {
+        guard let data = UserDefaults.standard.data(forKey: Self.pinsDefaultsKey),
+              let refs = try? JSONDecoder().decode([PinnedRef].self, from: data) else { return }
+        pinned = refs.map { Card.Mini(id: $0.id, name: $0.name) }
     }
 
     // MARK: - Image cache
