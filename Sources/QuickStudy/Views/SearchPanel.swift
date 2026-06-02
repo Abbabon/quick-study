@@ -16,6 +16,10 @@ struct SearchPanel: View {
             searchField
             Divider().opacity(0.3)
             content
+            if model.dbState == .ready && !model.pinned.isEmpty {
+                Divider().opacity(0.3)
+                PinnedRow(model: model)
+            }
         }
         .frame(minWidth: scale.size(860), minHeight: scale.size(520))
         .onAppear { searchFocused = true }
@@ -53,23 +57,34 @@ struct SearchPanel: View {
             if case .running = model.refreshState {
                 refreshBanner
             }
-            if model.results.isEmpty && model.query.isEmpty {
-                placeholderHint
-            } else if model.results.isEmpty {
-                Text("No matches.")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+            if !model.results.isEmpty {
                 let scale = UIScale(value: uiScaleValue)
                 HStack(spacing: 0) {
                     ResultList(model: model)
                         .frame(width: scale.size(280))
                     Divider().opacity(0.2)
-                    CardPreview(card: model.selectedCard)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    cardPreview
                 }
+            } else if model.selectedCard != nil {
+                // No active search, but a pinned card was clicked — show it.
+                cardPreview
+            } else if model.query.isEmpty {
+                placeholderHint
+            } else {
+                Text("No matches.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+    }
+
+    private var cardPreview: some View {
+        CardPreview(
+            card: model.selectedCard,
+            isPinned: model.selectedCard.map { model.isPinned($0.id) } ?? false,
+            onTogglePin: { model.togglePinSelected() }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var refreshBanner: some View {

@@ -11,6 +11,34 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     init(model: AppModel) {
         self.model = model
+        super.init()
+        model.onPinnedChange = { [weak self] in self?.adjustPanelForPins() }
+    }
+
+    /// Extra height reserved at the bottom for the pinned row. Sized a touch
+    /// larger than the row's intrinsic height so the preview area never shrinks.
+    private func pinnedBandHeight(_ scale: UIScale) -> CGFloat {
+        model.pinned.isEmpty ? 0 : scale.size(124)
+    }
+
+    private func panelSize(scale: UIScale) -> NSSize {
+        NSSize(width: scale.size(900), height: scale.size(560) + pinnedBandHeight(scale))
+    }
+
+    /// Grows/shrinks the live panel downward (top edge fixed) when the pinned
+    /// row appears or disappears, clamped to the active screen.
+    private func adjustPanelForPins() {
+        guard let panel = panel else { return }
+        let target = panelSize(scale: UIScale(value: panelScale))
+        let current = panel.frame
+        guard abs(current.height - target.height) > 0.5 else { return }
+        let topY = current.maxY
+        var origin = NSPoint(x: current.origin.x, y: topY - target.height)
+        if let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame {
+            origin.y = min(max(origin.y, visible.minY), visible.maxY - target.height)
+            origin.x = min(max(origin.x, visible.minX), visible.maxX - target.width)
+        }
+        panel.setFrame(NSRect(origin: origin, size: target), display: true, animate: true)
     }
 
     func toggle() {
@@ -54,8 +82,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func makePanel() -> NSPanel {
-        let scale = UIScale.current()
-        let size = NSSize(width: scale.size(900), height: scale.size(560))
+        let size = panelSize(scale: UIScale.current())
         let panel = SpotlightPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
