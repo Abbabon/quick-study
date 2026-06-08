@@ -15,6 +15,18 @@ Data is sourced from [Scryfall](https://scryfall.com/docs/api)'s free bulk-data 
 - Python 3 with Pillow (only to regenerate the app icon)
 - ~5 GB free disk for the full image cache (optional — you can start with cards-only)
 
+## Install via Homebrew
+
+On an Apple Silicon Mac:
+
+```sh
+brew install --cask Abbabon/quick-study/quick-study
+```
+
+The app is ad-hoc signed (not notarized); the cask strips the macOS quarantine
+attribute on install so Gatekeeper allows it to open. On first launch, grant
+Accessibility permission so the global hotkey works.
+
 ## Build & run
 
 ```sh
@@ -89,7 +101,7 @@ If you previously used the app under its earlier name (MTGSpotlight), the data d
 ├── Resources/
 │   ├── Info.plist
 │   ├── AppIcon.icns
-│   └── com.user.QuickStudy.refresh.plist   # weekly LaunchAgent template
+│   └── com.abbabon.quickstudy.refresh.plist   # weekly LaunchAgent template
 ├── scripts/
 │   ├── build-app.sh
 │   └── generate-icon.py
