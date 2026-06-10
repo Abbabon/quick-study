@@ -34,4 +34,4 @@ MTG_FETCHER_PATH="$(swift build --show-bin-path)/mtg-fetcher" swift run QuickStu
 - **`onKeyPress`** (used in `SearchPanel.swift`) requires macOS 14. If you need to support macOS 13, replace with an `NSEvent.addLocalMonitorForEvents(matching: .keyDown)` in `PanelController`.
 - **Image rendering of mana symbols** is plain-text for now — `{R}`, `{U}` etc. appear as text. Subtask D in `architecture.md` covers replacing with images.
 - **No app icon yet** — status-bar uses an SF Symbol. Subtask F.
-- **LaunchAgent install toggle** in Settings is described but not wired — see subtask G.
+- **Launch at login** is wired via `SMAppService.mainApp` (subtask G) — a "General" toggle in Settings registers/unregisters the app as a login item, surfacing in System Settings → Login Items. Off by default. See `Sources/QuickStudy/LoginItem.swift`.

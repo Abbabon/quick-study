@@ -8,9 +8,23 @@ struct SettingsView: View {
     @AppStorage("enterBehavior") private var enterBehaviorRaw: String = EnterBehavior.copyName.rawValue
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
     @AppStorage(ClearSearchTimeout.storageKey) private var clearSearchTimeoutSeconds: Double = ClearSearchTimeout.defaultValue
+    // The OS (SMAppService) is the source of truth; seed from it and resync onAppear.
+    @State private var launchAtLogin = LoginItem.isEnabled
 
     var body: some View {
         Form {
+            Section("General") {
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, newValue in
+                        do {
+                            try LoginItem.setEnabled(newValue)
+                        } catch {
+                            NSLog("QuickStudy: failed to set launch-at-login to \(newValue): \(error)")
+                            // Revert the toggle so the UI reflects the real state.
+                            launchAtLogin = LoginItem.isEnabled
+                        }
+                    }
+            }
             Section("Hotkey") {
                 KeyboardShortcuts.Recorder("Open search:", name: .openSearch)
             }
@@ -68,7 +82,11 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(minWidth: 480, idealWidth: 480, minHeight: 380, idealHeight: 380)
-        .onAppear { model.refreshImageCacheSize() }
+        .onAppear {
+            model.refreshImageCacheSize()
+            // Pick up changes made in System Settings while this window was closed.
+            launchAtLogin = LoginItem.isEnabled
+        }
     }
 
     private func confirmClearImageCache() {
