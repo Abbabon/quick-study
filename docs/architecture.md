@@ -177,7 +177,7 @@ Each row below is independently shippable:
 | D | Mana symbol rendering (replace `{R}` etc. with images) | `CardPreview` text formatter, `Resources/symbols/` |
 | E | Deck builder pane | new view, `decks` table |
 | F | App icon + status-bar icon assets | `Resources/Assets.xcassets/` |
-| G | LaunchAgent install/uninstall toggle in Settings | `SettingsView`, new `LaunchAgentManager.swift` |
+| G | ~~Launch-at-login toggle in Settings~~ — **done** via `SMAppService.mainApp` (`LoginItem.swift`), not a LaunchAgent | `SettingsView`, `LoginItem.swift` |
 | H | Crash log → user-visible error banner | `AppModel`, `SearchPanel` |
 
 ## 10. Verification
