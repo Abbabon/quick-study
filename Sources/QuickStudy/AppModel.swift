@@ -15,6 +15,10 @@ final class AppModel: ObservableObject {
     @Published var totalCards: Int = 0
     @Published var lastRefresh: String?
     @Published var imageCacheSizeFormatted: String = "—"
+    /// True when Scryfall has card data newer than what we last ingested.
+    @Published var updateAvailable: Bool = false
+    /// The remote `oracle_cards.updated_at` behind `updateAvailable`, for display.
+    @Published var availableUpdateStamp: String?
 
     let engine = SearchEngine()
     let fetcher = FetcherProcess()
@@ -172,6 +176,60 @@ final class AppModel: ObservableObject {
         return freed
     }
 
+    // MARK: - Update check
+
+    private enum UpdateKeys {
+        static let lastCheck = "lastUpdateCheck"
+        static let dismissedStamp = "dismissedUpdateStamp"
+    }
+    /// Soft throttle for the network call so repeated panel toggles don't hammer Scryfall.
+    private static let checkThrottle: TimeInterval = 60 * 60 // 1 hour
+
+    /// Checks Scryfall for newer card data and updates `updateAvailable`. Safe to call on
+    /// launch, on panel show, and on a daily timer — the network call is throttled and the
+    /// notification (driven off `updateAvailable` by the AppDelegate) is deduped by stamp.
+    /// Pass `force` to bypass the throttle (e.g. the first check at launch).
+    func checkForUpdates(force: Bool = false) {
+        guard dbState == .ready else { return }
+        let defaults = UserDefaults.standard
+        let now = Date()
+        if !force, let last = defaults.object(forKey: UpdateKeys.lastCheck) as? Date,
+           now.timeIntervalSince(last) < Self.checkThrottle { return }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let remote = await UpdateChecker.fetchLatestStamp() else { return }
+            defaults.set(now, forKey: UpdateKeys.lastCheck)
+            let ingested = try? self.store?.meta("bulk_updated_at")
+            let dismissed = defaults.string(forKey: UpdateKeys.dismissedStamp)
+            if UpdateChecker.shouldPrompt(remote: remote,
+                                          ingested: ingested ?? nil,
+                                          dismissed: dismissed) {
+                self.availableUpdateStamp = remote
+                self.updateAvailable = true
+            } else {
+                self.updateAvailable = false
+            }
+        }
+    }
+
+    /// User dismissed the prompt — suppress it until a strictly newer stamp appears.
+    func dismissUpdate() {
+        if let stamp = availableUpdateStamp {
+            UserDefaults.standard.set(stamp, forKey: UpdateKeys.dismissedStamp)
+        }
+        updateAvailable = false
+    }
+
+    /// Human-friendly form of `availableUpdateStamp` for banners/Settings.
+    var availableUpdateDisplay: String? {
+        guard let stamp = availableUpdateStamp, let date = UpdateChecker.parse(stamp) else { return nil }
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f.string(from: date)
+    }
+
     // MARK: - Refresh
 
     func startRefresh(skipImages: Bool = false) {
@@ -191,6 +249,8 @@ final class AppModel: ObservableObject {
         case "done":
             refreshState = .idle
             refreshDBState()
+            // Baseline (`bulk_updated_at`) is now current, so any pending prompt is stale.
+            updateAvailable = false
         case "error":
             refreshState = .error(event.message ?? "unknown error")
         case "exit":

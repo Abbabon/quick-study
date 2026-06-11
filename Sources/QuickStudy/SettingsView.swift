@@ -68,6 +68,21 @@ struct SettingsView: View {
                     Spacer()
                     Text(model.lastRefresh ?? "never").foregroundStyle(.secondary)
                 }
+                HStack {
+                    Text("Status:")
+                    Spacer()
+                    if model.updateAvailable {
+                        Label {
+                            Text("Update available" + (model.availableUpdateDisplay.map { " (Scryfall updated \($0))" } ?? ""))
+                        } icon: {
+                            Image(systemName: "exclamationmark.circle.fill")
+                        }
+                        .foregroundStyle(.tint)
+                        .font(.callout)
+                    } else {
+                        Text("Up to date").foregroundStyle(.secondary)
+                    }
+                }
                 refreshButtons
             }
             Section("Cache") {

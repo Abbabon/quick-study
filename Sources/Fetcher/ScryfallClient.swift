@@ -11,28 +11,14 @@ public final class ScryfallClient {
         self.session = session
     }
 
-    public struct BulkInfo: Decodable {
-        let object: String
-        let type: String
-        let download_uri: String
-        let updated_at: String
-        let size: Int
-    }
-
-    private struct BulkIndex: Decodable {
-        let data: [BulkInfo]
-    }
+    /// The bulk-data index contract lives in `Shared` so the app's update checker
+    /// can read the same `updated_at` timestamp without importing the fetcher.
+    public typealias BulkInfo = ScryfallBulk.Info
 
     /// Fetches the bulk-data index and returns the info entry of the given type.
     /// `type` defaults to "oracle_cards" — one row per unique card name.
     public func bulkInfo(type: String = "oracle_cards") async throws -> BulkInfo {
-        let (data, _) = try await session.data(from: Self.bulkIndexURL)
-        let index = try JSONDecoder().decode(BulkIndex.self, from: data)
-        guard let entry = index.data.first(where: { $0.type == type }) else {
-            throw NSError(domain: "ScryfallClient", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "bulk type \(type) not found"])
-        }
-        return entry
+        try await ScryfallBulk.info(type: type, session: session)
     }
 
     /// Downloads the bulk JSON blob to a local file and returns its path.
