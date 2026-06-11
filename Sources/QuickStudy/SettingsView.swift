@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("enterBehavior") private var enterBehaviorRaw: String = EnterBehavior.copyName.rawValue
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
     @AppStorage(ClearSearchTimeout.storageKey) private var clearSearchTimeoutSeconds: Double = ClearSearchTimeout.defaultValue
+    @AppStorage("appUpdateAutoCheck") private var appUpdateAutoCheck: Bool = true
     // The OS (SMAppService) is the source of truth; seed from it and resync onAppear.
     @State private var launchAtLogin = LoginItem.isEnabled
 
@@ -85,6 +86,20 @@ struct SettingsView: View {
                 }
                 refreshButtons
             }
+            Section("Application") {
+                HStack {
+                    Text("Version:")
+                    Spacer()
+                    Text(model.currentAppVersion).foregroundStyle(.secondary)
+                }
+                Toggle("Automatically check for updates", isOn: $appUpdateAutoCheck)
+                HStack {
+                    Text("Update:")
+                    Spacer()
+                    appUpdateStatusLabel
+                }
+                appUpdateButton
+            }
             Section("Cache") {
                 HStack {
                     Text("Image cache:")
@@ -119,6 +134,40 @@ struct SettingsView: View {
         // First button = Cancel (.alertFirstButtonReturn), second = Clear.
         if response == .alertSecondButtonReturn {
             model.clearImageCache()
+        }
+    }
+
+    @ViewBuilder
+    private var appUpdateStatusLabel: some View {
+        switch model.appUpdateState {
+        case .none:
+            Text("Up to date").foregroundStyle(.secondary)
+        case let .available(version, _):
+            Label("Update available (\(version))", systemImage: "arrow.down.circle.fill")
+                .foregroundStyle(.tint).font(.callout)
+        case let .downloading(version):
+            Text("Downloading \(version)…").foregroundStyle(.secondary)
+        case let .readyToRelaunch(version):
+            Label("Ready to install \(version)", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.tint).font(.callout)
+        case .installing:
+            Text("Installing…").foregroundStyle(.secondary)
+        case let .failed(message):
+            Text(message).foregroundStyle(.red).font(.callout)
+        }
+    }
+
+    @ViewBuilder
+    private var appUpdateButton: some View {
+        switch model.appUpdateState {
+        case let .available(_, kind):
+            Button(kind == .homebrew ? "Install Update" : "Get Update") { model.installOrRelaunch() }
+        case .readyToRelaunch:
+            Button("Relaunch to Update") { model.installOrRelaunch() }
+        case .downloading, .installing:
+            Button("Check for Updates") { model.checkForAppUpdate(force: true) }.disabled(true)
+        case .none, .failed:
+            Button("Check for Updates") { model.checkForAppUpdate(force: true) }
         }
     }
 

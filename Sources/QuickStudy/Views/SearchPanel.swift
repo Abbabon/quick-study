@@ -56,6 +56,8 @@ struct SearchPanel: View {
         case .ready:
             if case .running = model.refreshState {
                 refreshBanner
+            } else if showAppUpdateBanner {
+                appUpdateBanner
             } else if model.updateAvailable {
                 updateBanner
             }
@@ -123,6 +125,65 @@ struct SearchPanel: View {
         .padding(.horizontal, scale.pad(18))
         .padding(.vertical, scale.pad(6))
         .background(.tint.opacity(0.08))
+    }
+
+    private var showAppUpdateBanner: Bool {
+        if case .none = model.appUpdateState { return false }
+        return true
+    }
+
+    private var appUpdateBanner: some View {
+        let scale = UIScale(value: uiScaleValue)
+        return HStack(spacing: scale.pad(8)) {
+            Image(systemName: "arrow.down.circle.fill")
+                .foregroundStyle(.tint)
+                .font(scale.font(13))
+            Text(appUpdateText)
+                .font(scale.font(11))
+                .foregroundStyle(.secondary)
+            Spacer()
+            appUpdateButtons
+        }
+        .padding(.horizontal, scale.pad(18))
+        .padding(.vertical, scale.pad(6))
+        .background(.tint.opacity(0.08))
+    }
+
+    private var appUpdateText: String {
+        switch model.appUpdateState {
+        case let .available(version, _): return "QuickStudy \(version) is available"
+        case let .downloading(version): return "Downloading QuickStudy \(version)…"
+        case let .readyToRelaunch(version): return "QuickStudy \(version) ready to install"
+        case .installing: return "Installing update…"
+        case let .failed(message): return "Update failed: \(message)"
+        case .none: return ""
+        }
+    }
+
+    @ViewBuilder
+    private var appUpdateButtons: some View {
+        switch model.appUpdateState {
+        case .available:
+            Button("Update") { model.installOrRelaunch() }
+                .controlSize(.small)
+            Button("Dismiss") { model.dismissAppUpdate() }
+                .controlSize(.small)
+                .buttonStyle(.borderless)
+        case .downloading, .installing:
+            ProgressView().controlSize(.small)
+        case .readyToRelaunch:
+            Button("Relaunch") { model.installOrRelaunch() }
+                .controlSize(.small)
+            Button("Later") { model.dismissAppUpdate() }
+                .controlSize(.small)
+                .buttonStyle(.borderless)
+        case .failed:
+            Button("Dismiss") { model.dismissAppUpdate() }
+                .controlSize(.small)
+                .buttonStyle(.borderless)
+        case .none:
+            EmptyView()
+        }
     }
 
     private var placeholderHint: some View {
