@@ -56,6 +56,8 @@ struct SearchPanel: View {
         case .ready:
             if case .running = model.refreshState {
                 refreshBanner
+            } else if model.updateAvailable {
+                updateBanner
             }
             if !model.results.isEmpty {
                 let scale = UIScale(value: uiScaleValue)
@@ -99,6 +101,28 @@ struct SearchPanel: View {
                 .padding(.vertical, scale.pad(6))
             }
         }
+    }
+
+    private var updateBanner: some View {
+        let scale = UIScale(value: uiScaleValue)
+        let dateSuffix = model.availableUpdateDisplay.map { " (updated \($0))" } ?? ""
+        return HStack(spacing: scale.pad(8)) {
+            Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                .foregroundStyle(.tint)
+                .font(scale.font(13))
+            Text("New cards available on Scryfall\(dateSuffix)")
+                .font(scale.font(11))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Update") { model.startRefresh(skipImages: false) }
+                .controlSize(.small)
+            Button("Dismiss") { model.dismissUpdate() }
+                .controlSize(.small)
+                .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, scale.pad(18))
+        .padding(.vertical, scale.pad(6))
+        .background(.tint.opacity(0.08))
     }
 
     private var placeholderHint: some View {
