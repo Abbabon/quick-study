@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 import Shared
 
 /// Single observable source of truth for the panel UI.
@@ -19,6 +20,8 @@ final class AppModel: ObservableObject {
     @Published var updateAvailable: Bool = false
     /// The remote `oracle_cards.updated_at` behind `updateAvailable`, for display.
     @Published var availableUpdateStamp: String?
+    /// State of the app self-update flow (separate from the card-data update above).
+    @Published var appUpdateState: AppUpdateState = .none
 
     let engine = SearchEngine()
     let fetcher = FetcherProcess()
@@ -37,6 +40,36 @@ final class AppModel: ObservableObject {
         case idle
         case running(phase: String, done: Int, total: Int)
         case error(String)
+    }
+
+    /// Lifecycle of the app self-update. Manual installs auto-download then wait at
+    /// `.readyToRelaunch`; Homebrew installs sit at `.available` until the user clicks Update.
+    enum AppUpdateState: Equatable {
+        case none
+        case available(version: String, kind: AppUpdater.InstallKind)
+        case downloading(version: String)
+        case readyToRelaunch(version: String)
+        case installing
+        case failed(String)
+
+        /// The version this state refers to, for notifications, dismissal, and display.
+        var version: String? {
+            switch self {
+            case let .available(version, _), let .downloading(version),
+                 let .readyToRelaunch(version):
+                return version
+            case .none, .installing, .failed:
+                return nil
+            }
+        }
+
+        /// True when there's something the user can act on (update or relaunch).
+        var isActionable: Bool {
+            switch self {
+            case .available, .readyToRelaunch: return true
+            case .none, .downloading, .installing, .failed: return false
+            }
+        }
     }
 
     private final class CachedCard { let card: Card; init(_ c: Card) { self.card = c } }
@@ -228,6 +261,106 @@ final class AppModel: ObservableObject {
         f.dateStyle = .medium
         f.timeStyle = .none
         return f.string(from: date)
+    }
+
+    // MARK: - App self-update
+
+    private enum AppUpdateKeys {
+        static let lastCheck = "lastAppUpdateCheck"
+        static let dismissedVersion = "dismissedAppVersion"
+        static let autoCheck = "appUpdateAutoCheck"
+    }
+    /// The most recent release fetched, kept so `installOrRelaunch` can open the release page
+    /// as a fallback when a manual install has no downloadable zip asset.
+    private var latestRelease: AppUpdateChecker.ReleaseInfo?
+    /// The verified, staged `.app` awaiting swap-in (manual install path only).
+    private var stagedAppURL: URL?
+
+    /// The running app version, for display in Settings.
+    var currentAppVersion: String { AppUpdateChecker.currentVersion() ?? "—" }
+
+    /// Checks GitHub for a newer app release and drives `appUpdateState`. Safe to call on
+    /// launch, panel show, and a daily timer — the network call is throttled and the
+    /// notification (driven off `appUpdateState` by the AppDelegate) is deduped by version.
+    /// Pass `force` to bypass both the auto-check toggle and the throttle (e.g. the Settings
+    /// "Check for updates" button and the first check at launch).
+    func checkForAppUpdate(force: Bool = false) {
+        guard AppUpdater.isRunningFromAppBundle else { return } // no bundle under `swift run`
+        guard let current = AppUpdateChecker.currentVersion() else { return }
+        let defaults = UserDefaults.standard
+        if !force {
+            if defaults.object(forKey: AppUpdateKeys.autoCheck) != nil,
+               !defaults.bool(forKey: AppUpdateKeys.autoCheck) { return }
+            if let last = defaults.object(forKey: AppUpdateKeys.lastCheck) as? Date,
+               Date().timeIntervalSince(last) < Self.checkThrottle { return }
+        }
+        // Don't clobber an in-progress download or a staged-and-ready update.
+        switch appUpdateState {
+        case .downloading, .readyToRelaunch: return
+        default: break
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let release = await AppUpdateChecker.fetchLatest() else { return }
+            defaults.set(Date(), forKey: AppUpdateKeys.lastCheck)
+            self.latestRelease = release
+            let dismissed = defaults.string(forKey: AppUpdateKeys.dismissedVersion)
+            guard AppUpdateChecker.shouldPrompt(remote: release.version,
+                                                current: current,
+                                                dismissed: dismissed) else {
+                if case .failed = self.appUpdateState {} else { self.appUpdateState = .none }
+                return
+            }
+            let kind = AppUpdater.detect()
+            if kind == .manual, let zipURL = release.zipURL {
+                self.appUpdateState = .downloading(version: release.version)
+                do {
+                    let staged = try await AppUpdater.downloadAndStage(zipURL: zipURL,
+                                                                       expectedVersion: release.version)
+                    self.stagedAppURL = staged
+                    self.appUpdateState = .readyToRelaunch(version: release.version)
+                } catch {
+                    self.appUpdateState = .failed(error.localizedDescription)
+                }
+            } else {
+                self.appUpdateState = .available(version: release.version, kind: kind)
+            }
+        }
+    }
+
+    /// Acts on the current `appUpdateState`: relaunch into the staged build (manual),
+    /// run `brew upgrade` (Homebrew), or open the release page (manual with no zip asset).
+    /// On success the app terminates and a detached helper completes the install.
+    func installOrRelaunch() {
+        do {
+            switch appUpdateState {
+            case .readyToRelaunch:
+                guard let staged = stagedAppURL else { return }
+                try AppUpdater.installStagedAndRelaunch(stagedApp: staged)
+            case let .available(_, kind):
+                switch kind {
+                case .homebrew:
+                    appUpdateState = .installing
+                    try AppUpdater.brewUpgradeAndRelaunch()
+                case .manual:
+                    // No downloadable asset — open the release page for a manual download.
+                    if let page = latestRelease?.pageURL { NSWorkspace.shared.open(page) }
+                }
+            default:
+                break
+            }
+        } catch {
+            appUpdateState = .failed(error.localizedDescription)
+        }
+    }
+
+    /// User dismissed the app-update prompt — suppress it until a strictly newer version.
+    func dismissAppUpdate() {
+        if let version = appUpdateState.version {
+            UserDefaults.standard.set(version, forKey: AppUpdateKeys.dismissedVersion)
+        }
+        appUpdateState = .none
     }
 
     // MARK: - Refresh

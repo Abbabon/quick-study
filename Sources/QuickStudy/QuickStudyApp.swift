@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var settingsWindow = SettingsWindowController(model: model)
     private let notifier = NotificationManager()
     private var updateMenuItem: NSMenuItem!
+    private var appUpdateMenuItem: NSMenuItem!
     private var dailyTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
 
@@ -37,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notifier.configure()
         notifier.onUpdateAction = { [weak self] in self?.model.startRefresh(skipImages: false) }
         notifier.onOpenPanel = { [weak self] in self?.panel.show() }
+        notifier.onAppUpdateAction = { [weak self] in self?.model.installOrRelaunch() }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
@@ -47,6 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     action: #selector(refreshNow), keyEquivalent: "")
         updateMenuItem.isHidden = true
         menu.addItem(updateMenuItem)
+        appUpdateMenuItem = NSMenuItem(title: "Update QuickStudy…",
+                                       action: #selector(installAppUpdate), keyEquivalent: "")
+        appUpdateMenuItem.isHidden = true
+        menu.addItem(appUpdateMenuItem)
         menu.addItem(withTitle: "Open Search", action: #selector(openSearch), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Refresh Database…", action: #selector(refreshNow), keyEquivalent: "")
@@ -55,7 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Quit Quick Study", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         for item in menu.items where item.action == #selector(openSearch)
             || item.action == #selector(refreshNow)
-            || item.action == #selector(openSettings) {
+            || item.action == #selector(openSettings)
+            || item.action == #selector(installAppUpdate) {
             item.target = self
         }
         statusItem.menu = menu
@@ -63,27 +70,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         KeyboardShortcuts.onKeyDown(for: .openSearch) { [weak self] in
             self?.panel.toggle()
             self?.model.checkForUpdates()
+            self?.model.checkForAppUpdate()
         }
 
         // Reflect update state in the menu-bar badge, dropdown item, and notification.
         model.$updateAvailable
             .receive(on: RunLoop.main)
-            .sink { [weak self] available in self?.updateBadge(available) }
+            .sink { [weak self] _ in self?.refreshUpdateUI() }
+            .store(in: &cancellables)
+        model.$appUpdateState
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshUpdateUI() }
             .store(in: &cancellables)
 
         // Check on launch and once per day thereafter.
         model.checkForUpdates(force: true)
+        model.checkForAppUpdate(force: true)
         dailyTimer = Timer.scheduledTimer(withTimeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.model.checkForUpdates() }
+            Task { @MainActor in
+                self?.model.checkForUpdates()
+                self?.model.checkForAppUpdate()
+            }
         }
     }
 
-    /// Badges the menu-bar icon and reveals the dropdown item when an update exists, and
-    /// fires the native notification (deduped per stamp inside `NotificationManager`).
-    private func updateBadge(_ available: Bool) {
-        updateMenuItem?.isHidden = !available
+    /// Reflects both update kinds (Scryfall card data and the app itself) in the menu-bar
+    /// badge, dropdown items, and native notifications. The red dot lights up when either is
+    /// pending; each notification is deduped inside `NotificationManager`.
+    private func refreshUpdateUI() {
+        let cardUpdate = model.updateAvailable
+        let appActionable = model.appUpdateState.isActionable
+
+        updateMenuItem?.isHidden = !cardUpdate
+
+        switch model.appUpdateState {
+        case let .available(version, _):
+            appUpdateMenuItem?.title = "Update QuickStudy \(version)…"
+            appUpdateMenuItem?.action = #selector(installAppUpdate)
+            appUpdateMenuItem?.isHidden = false
+        case let .readyToRelaunch(version):
+            appUpdateMenuItem?.title = "Relaunch to Update to \(version)…"
+            appUpdateMenuItem?.action = #selector(installAppUpdate)
+            appUpdateMenuItem?.isHidden = false
+        case .downloading:
+            appUpdateMenuItem?.title = "Downloading Update…"
+            appUpdateMenuItem?.action = nil
+            appUpdateMenuItem?.isHidden = false
+        case .installing:
+            appUpdateMenuItem?.title = "Installing Update…"
+            appUpdateMenuItem?.action = nil
+            appUpdateMenuItem?.isHidden = false
+        case .none, .failed:
+            appUpdateMenuItem?.isHidden = true
+        }
+
         if let button = statusItem?.button {
-            if available {
+            if cardUpdate || appActionable {
                 button.attributedTitle = NSAttributedString(
                     string: " ●",
                     attributes: [.foregroundColor: NSColor.systemRed,
@@ -92,18 +134,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 button.attributedTitle = NSAttributedString(string: "")
             }
         }
-        if available, let stamp = model.availableUpdateStamp {
+
+        if cardUpdate, let stamp = model.availableUpdateStamp {
             notifier.notifyIfNeeded(stamp: stamp)
+        }
+        if appActionable, let version = model.appUpdateState.version {
+            notifier.notifyAppUpdateIfNeeded(version: version)
         }
     }
 
     @objc private func openSearch() {
         panel.show()
         model.checkForUpdates()
+        model.checkForAppUpdate()
     }
 
     @objc private func refreshNow() {
         model.startRefresh(skipImages: false)
+    }
+
+    @objc private func installAppUpdate() {
+        model.installOrRelaunch()
     }
 
     @objc private func openSettings() {

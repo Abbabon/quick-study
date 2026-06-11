@@ -145,6 +145,33 @@ Panel:
 - Dismissal: Esc (via `cancelOperation`) or `windowDidResignKey` (click outside).
 - Position: horizontally centered, slightly above vertical center of the active screen's visible frame.
 
+## 6a. App self-update
+
+Two independent "what's new" checks run on the same launch/daily/panel-open cadence, both
+throttled to one hour and surfaced through the same vocabulary (menu-bar red-dot badge,
+`SearchPanel` banner, deduped `UserNotifications`):
+
+- **Card data** — `UpdateChecker` compares Scryfall's `oracle_cards.updated_at` against the
+  ingested `bulk_updated_at`. Action: refresh the DB.
+- **App binary** — `AppUpdateChecker` compares the latest GitHub Release `tag_name` against the
+  running bundle's `CFBundleShortVersionString` (pure `isNewer`/`shouldPrompt`, unit-tested).
+  Action: self-update via `AppUpdater`.
+
+`AppUpdater` is a DIY updater (no Sparkle — reversing the original homebrew-design YAGNI call)
+that branches on install kind, detected by the presence of `~/Library/Caskroom/quick-study`:
+
+- **Homebrew install** → a detached `/bin/sh` helper waits for the app to quit, runs
+  `brew upgrade --cask quick-study`, then relaunches. (Prompt-on-click; nothing to pre-stage.)
+- **Manual install** → the release's `QuickStudy-<ver>.zip` (the same artifact `release.sh`
+  publishes) is downloaded in the background, extracted with `ditto`, verified
+  (`codesign --verify --deep` + version match), and staged. On the user's click, a detached
+  helper waits for quit, swaps the staged bundle over the running one (with `.bak` rollback),
+  strips `com.apple.quarantine` (mirroring the cask `postflight`), and relaunches.
+
+Both paths require a real `.app` and an unsandboxed process (already true — the app shells out
+to `mtg-fetcher`); under `swift run` the updater is a no-op. No release-pipeline changes were
+needed: `release.sh` already builds the signature-preserving zip and updates the tap cask.
+
 ## 7. Subprocess protocol (NDJSON over stdout)
 
 Every line is one JSON object:
