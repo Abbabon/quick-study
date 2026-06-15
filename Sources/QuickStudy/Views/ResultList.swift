@@ -20,7 +20,7 @@ struct ResultList: View {
             }
             .onChange(of: model.selectedID) { _, id in
                 if let id = id {
-                    withAnimation(.easeOut(duration: 0.08)) {
+                    withAnimation(DS.Motion.selectScroll) {
                         proxy.scrollTo(id, anchor: .center)
                     }
                 }

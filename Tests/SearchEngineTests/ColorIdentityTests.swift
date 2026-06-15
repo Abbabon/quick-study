@@ -35,4 +35,18 @@ final class ColorIdentityTests: XCTestCase {
         let mini = Card.Mini(id: "2", name: "Lightning Helix", colors: ["R", "W"])
         XCTAssertEqual(mini.identity, .multicolor)
     }
+
+    func testMiniIdentityInit() {
+        let mini = Card.Mini(id: "3", name: "Sol Ring", identity: .colorless)
+        XCTAssertEqual(mini.identity, .colorless)
+        XCTAssertEqual(mini.nameLower, "sol ring")
+    }
+
+    func testColorIdentityCodableRoundTrip() throws {
+        for identity in [ColorIdentity.white, .blue, .black, .red, .green, .colorless, .multicolor] {
+            let data = try JSONEncoder().encode(identity)
+            let decoded = try JSONDecoder().decode(ColorIdentity.self, from: data)
+            XCTAssertEqual(decoded, identity)
+        }
+    }
 }

@@ -2,7 +2,7 @@ import Foundation
 
 /// Magic color identity used for frame/thumbnail/badge tints.
 /// Two or more colors collapse to `.multicolor` (gold) — never a blend.
-public enum ColorIdentity: Sendable, Equatable {
+public enum ColorIdentity: String, Sendable, Equatable, Codable {
     case white, blue, black, red, green, colorless, multicolor
 
     public init(colors: [String]) {
@@ -66,16 +66,21 @@ public struct Card: Codable, Equatable, Sendable {
         public let nameLower: String
         public let identity: ColorIdentity
 
-        /// Legacy init for callers with no colors data (e.g. pin deserialization); identity will be .colorless.
+        /// Legacy init for callers with no colors data; identity will be .colorless.
         public init(id: String, name: String) {
-            self.init(id: id, name: name, colors: [])
+            self.init(id: id, name: name, identity: .colorless)
         }
 
         public init(id: String, name: String, colors: [String]) {
+            self.init(id: id, name: name, identity: ColorIdentity(colors: colors))
+        }
+
+        /// Direct init for callers that already know the identity (e.g. pin deserialization).
+        public init(id: String, name: String, identity: ColorIdentity) {
             self.id = id
             self.name = name
             self.nameLower = name.lowercased()
-            self.identity = ColorIdentity(colors: colors)
+            self.identity = identity
         }
     }
 }
