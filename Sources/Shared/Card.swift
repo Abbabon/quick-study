@@ -1,5 +1,26 @@
 import Foundation
 
+/// Magic color identity used for frame/thumbnail/badge tints.
+/// Two or more colors collapse to `.multicolor` (gold) — never a blend.
+public enum ColorIdentity: Sendable, Equatable {
+    case white, blue, black, red, green, colorless, multicolor
+
+    public init(colors: [String]) {
+        if colors.count >= 2 {
+            self = .multicolor
+            return
+        }
+        switch colors.first {
+        case "W": self = .white
+        case "U": self = .blue
+        case "B": self = .black
+        case "R": self = .red
+        case "G": self = .green
+        default:  self = .colorless
+        }
+    }
+}
+
 public struct Card: Codable, Equatable, Sendable {
     public let id: String          // Scryfall UUID, primary key
     public let name: String
@@ -35,6 +56,8 @@ public struct Card: Codable, Equatable, Sendable {
         self.imagePath = imagePath
         self.scryfallURI = scryfallURI
     }
+
+    public var identity: ColorIdentity { ColorIdentity(colors: colors) }
 
     /// Minimal projection loaded into memory for fast search ranking.
     public struct Mini: Sendable, Equatable {
