@@ -23,6 +23,7 @@ struct DownloadPromptView: View {
                     Button("Download Everything (~4 GB)") {
                         model.startRefresh(skipImages: false)
                     }
+                    .buttonStyle(.brandProminent)
                     .keyboardShortcut(.defaultAction)
                     Button("Cards Only (no images)") {
                         model.startRefresh(skipImages: true)
@@ -46,5 +47,6 @@ struct DownloadPromptView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(40)
+        .tint(DS.accent)
     }
 }

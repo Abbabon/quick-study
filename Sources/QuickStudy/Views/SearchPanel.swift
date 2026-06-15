@@ -22,6 +22,7 @@ struct SearchPanel: View {
             }
         }
         .frame(minWidth: scale.size(860), minHeight: scale.size(520))
+        .tint(DS.accent)
         .onAppear { searchFocused = true }
         .onExitCommand(perform: onDismiss)
     }
@@ -117,6 +118,7 @@ struct SearchPanel: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Button("Update") { model.startRefresh(skipImages: false) }
+                .buttonStyle(.brandProminent)
                 .controlSize(.small)
             Button("Dismiss") { model.dismissUpdate() }
                 .controlSize(.small)
