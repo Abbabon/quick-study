@@ -117,6 +117,7 @@ struct SettingsView: View {
             // Pick up changes made in System Settings while this window was closed.
             launchAtLogin = LoginItem.isEnabled
         }
+        .tint(DS.accent)
     }
 
     private func confirmClearImageCache() {
