@@ -64,10 +64,18 @@ public struct Card: Codable, Equatable, Sendable {
         public let id: String
         public let name: String
         public let nameLower: String
+        public let identity: ColorIdentity
+
+        /// Kept for callers (and tests) that don't need identity; defaults to colorless.
         public init(id: String, name: String) {
+            self.init(id: id, name: name, colors: [])
+        }
+
+        public init(id: String, name: String, colors: [String]) {
             self.id = id
             self.name = name
             self.nameLower = name.lowercased()
+            self.identity = ColorIdentity(colors: colors)
         }
     }
 }

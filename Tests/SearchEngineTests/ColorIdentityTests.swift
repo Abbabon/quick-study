@@ -25,4 +25,14 @@ final class ColorIdentityTests: XCTestCase {
                         imagePath: nil, scryfallURI: "")
         XCTAssertEqual(card.identity, .multicolor)
     }
+
+    func testMiniDefaultInitIsColorless() {
+        let mini = Card.Mini(id: "1", name: "Shock")
+        XCTAssertEqual(mini.identity, .colorless)
+    }
+
+    func testMiniColorsInitDerivesIdentity() {
+        let mini = Card.Mini(id: "2", name: "Lightning Helix", colors: ["R", "W"])
+        XCTAssertEqual(mini.identity, .multicolor)
+    }
 }
