@@ -152,7 +152,7 @@ final class AppModel: ObservableObject {
     private struct PinnedRef: Codable {
         let id: String
         let name: String
-        var identity: ColorIdentity = .colorless
+        let identity: ColorIdentity
 
         enum CodingKeys: String, CodingKey { case id, name, identity }
 

@@ -37,9 +37,9 @@ final class ColorIdentityTests: XCTestCase {
     }
 
     func testMiniIdentityInit() {
-        let mini = Card.Mini(id: "3", name: "Sol Ring", identity: .colorless)
-        XCTAssertEqual(mini.identity, .colorless)
-        XCTAssertEqual(mini.nameLower, "sol ring")
+        let mini = Card.Mini(id: "3", name: "Niv-Mizzet", identity: .multicolor)
+        XCTAssertEqual(mini.identity, .multicolor)
+        XCTAssertEqual(mini.nameLower, "niv-mizzet")
     }
 
     func testColorIdentityCodableRoundTrip() throws {
