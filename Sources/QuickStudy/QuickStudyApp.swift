@@ -27,7 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notifier = NotificationManager()
     private var updateMenuItem: NSMenuItem!
     private var appUpdateMenuItem: NSMenuItem!
-    private var dailyTimer: Timer?
+    private var checkTimer: Timer?
+    private var wakeObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -83,10 +84,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _ in self?.refreshUpdateUI() }
             .store(in: &cancellables)
 
-        // Check on launch and once per day thereafter.
+        // Check on launch, then keep checking. A single long Timer is unreliable in an
+        // LSUIElement app: App Nap throttles it and system sleep coalesces its fire date, so
+        // a 24h timer effectively never fired across overnight sleep. Instead use a shorter
+        // timer (the 1h network throttle in `checkForUpdates` caps actual Scryfall calls) plus
+        // a wake-from-sleep trigger, which covers the common laptop-wakes-in-the-morning case.
         model.checkForUpdates(force: true)
         model.checkForAppUpdate(force: true)
-        dailyTimer = Timer.scheduledTimer(withTimeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 2 * 60 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.model.checkForUpdates()
+                self?.model.checkForAppUpdate()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        checkTimer = timer
+
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
             Task { @MainActor in
                 self?.model.checkForUpdates()
                 self?.model.checkForAppUpdate()
