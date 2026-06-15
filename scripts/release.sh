@@ -1,12 +1,16 @@
 #!/bin/bash
-# Cut a release of QuickStudy: build, zip, tag, create a GitHub Release, and
-# update the Homebrew cask in the tap.
+# Cut a release of QuickStudy: build, zip, tag, create a GitHub Release, update
+# the Homebrew cask in the tap, and bump the working tree to the next dev version.
+#
+# After publishing <version>, the repo's Info.plist is bumped to the next patch
+# (e.g. 0.2.0 -> 0.2.1) so local/dev builds report a version *ahead* of the latest
+# release and don't trip the in-app "update available" prompt against themselves.
 #
 # Usage:
 #   ./scripts/release.sh <version> [--dry-run]
 #     <version>   semver, e.g. 0.1.0
-#     --dry-run   build + zip + sha256 only; no version commit, no git tag,
-#                 no GitHub release, no tap push. Leaves Info.plist untouched.
+#     --dry-run   build + zip + sha256 only; no version commit, no git tag, no
+#                 GitHub release, no tap push, no dev bump. Leaves Info.plist untouched.
 #
 # Requires (for a real publish): `gh` authenticated as the Abbabon account and
 # push access to both Abbabon/quick-study and Abbabon/homebrew-quick-study.
@@ -142,6 +146,20 @@ EOF
 git -C "$TAP_DIR" add Casks/quick-study.rb
 git -C "$TAP_DIR" commit -m "quick-study $VERSION"
 git -C "$TAP_DIR" push origin HEAD
+
+# --- bump to next dev version ---
+# Leave the working tree one patch ahead of the release just published, so dev
+# builds report a newer version than the latest release and never prompt to
+# "update" to a build the user already has.
+IFS='.' read -r VMAJ VMIN VPAT <<< "$VERSION"
+NEXT_DEV="$VMAJ.$VMIN.$(( VPAT + 1 ))"
+NEXT_BUILD=$(( NEW_BUILD + 1 ))
+echo "==> Bumping working version to $NEXT_DEV (build $NEXT_BUILD) for development"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEXT_DEV" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEXT_BUILD" "$PLIST"
+git -C "$ROOT" add "$PLIST"
+git -C "$ROOT" commit -m "Bump to $NEXT_DEV for development"
+git -C "$ROOT" push origin HEAD
 
 echo "==> Done. Install with:"
 echo "    brew install --cask $TAP_REF"
