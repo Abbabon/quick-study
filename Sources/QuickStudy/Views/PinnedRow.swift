@@ -24,7 +24,7 @@ struct PinnedRow: View {
     private func entry(_ mini: Card.Mini, scale: UIScale) -> some View {
         let selected = mini.id == model.selectedID
         return VStack(spacing: scale.pad(4)) {
-            Thumbnail(id: mini.id)
+            Thumbnail(id: mini.id, identity: mini.identity)
                 .frame(width: scale.size(44), height: scale.size(62))
             Text(mini.name)
                 .font(scale.font(10))
@@ -33,8 +33,8 @@ struct PinnedRow: View {
         }
         .padding(scale.pad(6))
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(selected ? Color.accentColor.opacity(0.25) : .clear)
+            RoundedRectangle(cornerRadius: DS.Radius.sm)
+                .fill(selected ? DS.selectionStrong : Color.clear)
         )
         .overlay(alignment: .topTrailing) {
             Button {
