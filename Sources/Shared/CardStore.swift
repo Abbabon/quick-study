@@ -50,9 +50,10 @@ public final class CardStore {
     public func loadMinis() throws -> [Card.Mini] {
         try dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: "SELECT id, name, colors FROM cards")
+            let decoder = JSONDecoder()
             return rows.map { row in
                 let colorsRaw: String = row["colors"] ?? "[]"
-                let colors = (try? JSONDecoder().decode([String].self, from: Data(colorsRaw.utf8))) ?? []
+                let colors = (try? decoder.decode([String].self, from: Data(colorsRaw.utf8))) ?? []
                 return Card.Mini(id: row["id"], name: row["name"], colors: colors)
             }
         }

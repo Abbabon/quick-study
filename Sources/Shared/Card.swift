@@ -66,7 +66,7 @@ public struct Card: Codable, Equatable, Sendable {
         public let nameLower: String
         public let identity: ColorIdentity
 
-        /// Kept for callers (and tests) that don't need identity; defaults to colorless.
+        /// Legacy init for callers with no colors data (e.g. pin deserialization); identity will be .colorless.
         public init(id: String, name: String) {
             self.init(id: id, name: name, colors: [])
         }
