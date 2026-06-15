@@ -21,9 +21,9 @@ final class SettingsWindowController {
             host.sizingOptions = [.preferredContentSize]
             let w = NSWindow(contentViewController: host)
             w.title = "Quick Study Settings"
-            w.styleMask = [.titled, .closable, .miniaturizable]
+            w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             w.isReleasedWhenClosed = false
-            w.setContentSize(NSSize(width: 520, height: 420))
+            w.setContentSize(NSSize(width: 520, height: 560))
             w.center()
             window = w
         }

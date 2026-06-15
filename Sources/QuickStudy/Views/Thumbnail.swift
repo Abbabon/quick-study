@@ -3,10 +3,11 @@ import AppKit
 import Shared
 
 /// Small card thumbnail loaded synchronously from the on-disk image cache,
-/// with a placeholder when the image hasn't been downloaded. Shared by the
-/// results list and the pinned row.
+/// with a mana-tinted placeholder when the image hasn't been downloaded.
+/// Shared by the results list and the pinned row.
 struct Thumbnail: View {
     let id: String
+    var identity: ColorIdentity = .colorless
     @State private var image: NSImage?
 
     var body: some View {
@@ -15,11 +16,12 @@ struct Thumbnail: View {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: DS.Radius.xs))
+                    .dsHairlineRing(cornerRadius: DS.Radius.xs)
             } else {
-                RoundedRectangle(cornerRadius: 3).fill(.tertiary)
+                IdentityPlaceholder(identity: identity, cornerRadius: DS.Radius.xs)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 3))
         .onAppear(perform: load)
     }
 

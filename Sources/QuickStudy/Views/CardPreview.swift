@@ -23,16 +23,16 @@ struct CardPreview: View {
     @ViewBuilder
     private func content(card: Card, scale: UIScale) -> some View {
         HStack(alignment: .top, spacing: scale.pad(16)) {
-            cardImage(for: card.id)
+            cardImage(for: card.identity, id: card.id)
                 .frame(maxWidth: 330, maxHeight: 480)
+                .dsCardShadow()
             VStack(alignment: .leading, spacing: scale.pad(8)) {
                 HStack(spacing: scale.pad(8)) {
                     Text(card.name).font(scale.font(17, weight: .bold))
+                    IdentityBadge(colors: card.colors)
                     Spacer()
-                    if let cost = card.manaCost {
-                        Text(cost)
-                            .font(scale.font(13, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                    if let cost = card.manaCost, !cost.isEmpty {
+                        ManaCostView(cost: cost, size: scale.size(16))
                     }
                     pinButton(scale: scale)
                 }
@@ -58,7 +58,7 @@ struct CardPreview: View {
         Button(action: onTogglePin) {
             Image(systemName: isPinned ? "pin.fill" : "pin")
                 .font(scale.font(14, weight: .medium))
-                .foregroundStyle(isPinned ? Color.accentColor : .secondary)
+                .foregroundStyle(isPinned ? DS.accent : Color.secondary)
         }
         .buttonStyle(.plain)
         .keyboardShortcut("p", modifiers: .command)
@@ -66,26 +66,15 @@ struct CardPreview: View {
     }
 
     @ViewBuilder
-    private func cardImage(for id: String) -> some View {
+    private func cardImage(for identity: ColorIdentity, id: String) -> some View {
         let url = Paths.imageURL(forCardID: id)
         if FileManager.default.fileExists(atPath: url.path), let img = NSImage(contentsOf: url) {
             Image(nsImage: img)
                 .resizable()
                 .scaledToFit()
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: DS.Radius.img))
         } else {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.tertiary)
-                .overlay(
-                    VStack(spacing: 6) {
-                        Image(systemName: "photo")
-                            .font(.title)
-                            .foregroundStyle(.secondary)
-                        Text("Image not downloaded")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                )
+            IdentityPlaceholder(identity: identity, cornerRadius: DS.Radius.img, symbol: "photo")
         }
     }
 }

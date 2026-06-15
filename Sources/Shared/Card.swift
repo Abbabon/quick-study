@@ -1,5 +1,26 @@
 import Foundation
 
+/// Magic color identity used for frame/thumbnail/badge tints.
+/// Two or more colors collapse to `.multicolor` (gold) — never a blend.
+public enum ColorIdentity: String, Sendable, Equatable, Codable {
+    case white, blue, black, red, green, colorless, multicolor
+
+    public init(colors: [String]) {
+        if colors.count >= 2 {
+            self = .multicolor
+            return
+        }
+        switch colors.first {
+        case "W": self = .white
+        case "U": self = .blue
+        case "B": self = .black
+        case "R": self = .red
+        case "G": self = .green
+        default:  self = .colorless
+        }
+    }
+}
+
 public struct Card: Codable, Equatable, Sendable {
     public let id: String          // Scryfall UUID, primary key
     public let name: String
@@ -36,15 +57,30 @@ public struct Card: Codable, Equatable, Sendable {
         self.scryfallURI = scryfallURI
     }
 
+    public var identity: ColorIdentity { ColorIdentity(colors: colors) }
+
     /// Minimal projection loaded into memory for fast search ranking.
     public struct Mini: Sendable, Equatable {
         public let id: String
         public let name: String
         public let nameLower: String
+        public let identity: ColorIdentity
+
+        /// Legacy init for callers with no colors data; identity will be .colorless.
         public init(id: String, name: String) {
+            self.init(id: id, name: name, identity: .colorless)
+        }
+
+        public init(id: String, name: String, colors: [String]) {
+            self.init(id: id, name: name, identity: ColorIdentity(colors: colors))
+        }
+
+        /// Direct init for callers that already know the identity (e.g. pin deserialization).
+        public init(id: String, name: String, identity: ColorIdentity) {
             self.id = id
             self.name = name
             self.nameLower = name.lowercased()
+            self.identity = identity
         }
     }
 }

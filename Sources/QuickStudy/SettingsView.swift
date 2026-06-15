@@ -111,12 +111,14 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 480, idealWidth: 480, minHeight: 380, idealHeight: 380)
+        .frame(minWidth: 480, idealWidth: 520, maxWidth: .infinity,
+               minHeight: 440, idealHeight: 560, maxHeight: .infinity)
         .onAppear {
             model.refreshImageCacheSize()
             // Pick up changes made in System Settings while this window was closed.
             launchAtLogin = LoginItem.isEnabled
         }
+        .tint(DS.accent)
     }
 
     private func confirmClearImageCache() {

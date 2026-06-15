@@ -152,6 +152,23 @@ final class AppModel: ObservableObject {
     private struct PinnedRef: Codable {
         let id: String
         let name: String
+        let identity: ColorIdentity
+
+        enum CodingKeys: String, CodingKey { case id, name, identity }
+
+        init(id: String, name: String, identity: ColorIdentity) {
+            self.id = id
+            self.name = name
+            self.identity = identity
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            name = try c.decode(String.self, forKey: .name)
+            // Older persisted pins predate `identity`; default to colorless.
+            identity = try c.decodeIfPresent(ColorIdentity.self, forKey: .identity) ?? .colorless
+        }
     }
 
     func isPinned(_ id: String) -> Bool {
@@ -172,7 +189,7 @@ final class AppModel: ObservableObject {
     /// Toggles the currently-previewed card. No-op when nothing is selected.
     func togglePinSelected() {
         guard let card = selectedCard else { return }
-        togglePin(Card.Mini(id: card.id, name: card.name))
+        togglePin(Card.Mini(id: card.id, name: card.name, colors: card.colors))
     }
 
     func unpin(_ id: String) {
@@ -183,7 +200,7 @@ final class AppModel: ObservableObject {
     }
 
     private func persistPins() {
-        let refs = pinned.map { PinnedRef(id: $0.id, name: $0.name) }
+        let refs = pinned.map { PinnedRef(id: $0.id, name: $0.name, identity: $0.identity) }
         guard let data = try? JSONEncoder().encode(refs) else { return }
         UserDefaults.standard.set(data, forKey: Self.pinsDefaultsKey)
     }
@@ -191,7 +208,7 @@ final class AppModel: ObservableObject {
     private func loadPins() {
         guard let data = UserDefaults.standard.data(forKey: Self.pinsDefaultsKey),
               let refs = try? JSONDecoder().decode([PinnedRef].self, from: data) else { return }
-        pinned = refs.map { Card.Mini(id: $0.id, name: $0.name) }
+        pinned = refs.map { Card.Mini(id: $0.id, name: $0.name, identity: $0.identity) }
     }
 
     // MARK: - Image cache

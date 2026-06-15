@@ -20,7 +20,7 @@ struct ResultList: View {
             }
             .onChange(of: model.selectedID) { _, id in
                 if let id = id {
-                    withAnimation(.easeOut(duration: 0.08)) {
+                    withAnimation(DS.Motion.selectScroll) {
                         proxy.scrollTo(id, anchor: .center)
                     }
                 }
@@ -37,7 +37,7 @@ struct ResultList: View {
         var body: some View {
             let scale = UIScale(value: uiScaleValue)
             return HStack(spacing: scale.pad(10)) {
-                Thumbnail(id: mini.id)
+                Thumbnail(id: mini.id, identity: mini.identity)
                     .frame(width: scale.size(28), height: scale.size(40))
                 Text(mini.name)
                     .lineLimit(1)
@@ -47,8 +47,8 @@ struct ResultList: View {
             .padding(.horizontal, scale.pad(10))
             .padding(.vertical, scale.pad(4))
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(selected ? Color.accentColor.opacity(0.25) : .clear)
+                RoundedRectangle(cornerRadius: DS.Radius.sm)
+                    .fill(selected ? DS.selectionStrong : Color.clear)
             )
             .contentShape(Rectangle())
             .onTapGesture(perform: onTap)
