@@ -17,9 +17,6 @@ struct IdentityPlaceholder: View {
                         .foregroundStyle(DS.manaInk.opacity(0.45))
                 }
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5)
-            )
+            .dsHairlineRing(cornerRadius: cornerRadius)
     }
 }
