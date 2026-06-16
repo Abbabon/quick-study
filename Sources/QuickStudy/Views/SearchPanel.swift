@@ -7,21 +7,32 @@ struct SearchPanel: View {
     var onDismiss: () -> Void
 
     @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("enterBehavior") private var enterBehaviorRaw: String = EnterBehavior.copyName.rawValue
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
+    @AppStorage("showRecentlyAdded") private var showRecentlyAdded: Bool = true
 
     var body: some View {
         let scale = UIScale(value: uiScaleValue)
         return VStack(spacing: 0) {
             searchField
             Divider().opacity(0.3)
-            content
+            HStack(spacing: 0) {
+                if model.showsRecentColumn && model.recentlyAddedExpanded {
+                    RecentlyAddedColumn(model: model)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    Divider().opacity(0.5)
+                }
+                content
+            }
             if model.dbState == .ready && !model.pinned.isEmpty {
                 Divider().opacity(0.3)
                 PinnedRow(model: model)
             }
         }
         .frame(minWidth: scale.size(860), minHeight: scale.size(520))
+        .animation(reduceMotion ? nil : DS.Motion.resize, value: model.recentlyAddedExpanded)
+        .animation(reduceMotion ? nil : DS.Motion.resize, value: model.showsRecentColumn)
         .tint(DS.accent)
         .onAppear { searchFocused = true }
         .onExitCommand(perform: onDismiss)
@@ -30,6 +41,21 @@ struct SearchPanel: View {
     private var searchField: some View {
         let scale = UIScale(value: uiScaleValue)
         return HStack(spacing: scale.pad(8)) {
+            if model.showsRecentColumn {
+                Button {
+                    withAnimation(reduceMotion ? nil : DS.Motion.resize) {
+                        model.recentlyAddedExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.leading")
+                        .font(scale.font(18))
+                        .foregroundStyle(model.recentlyAddedExpanded ? DS.accent : Color.secondary)
+                        .frame(width: scale.size(30), height: scale.size(30))
+                        .contentShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
+                }
+                .buttonStyle(.plain)
+                .help(model.recentlyAddedExpanded ? "Hide Recently Added" : "Show Recently Added")
+            }
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
                 .font(scale.font(18, weight: .medium))
@@ -84,12 +110,40 @@ struct SearchPanel: View {
     }
 
     private var cardPreview: some View {
-        CardPreview(
-            card: model.selectedCard,
-            isPinned: model.selectedCard.map { model.isPinned($0.id) } ?? false,
-            onTogglePin: { model.togglePinSelected() }
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            if let recent = model.selectedRecent {
+                metaStrip(recent)
+                Divider().opacity(0.5)
+            }
+            CardPreview(
+                card: model.selectedCard,
+                isPinned: model.selectedCard.map { model.isPinned($0.id) } ?? false,
+                onTogglePin: { model.togglePinSelected() }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func metaStrip(_ recent: Card.Recent) -> some View {
+        let scale = UIScale(value: uiScaleValue)
+        let code = recent.setCode.map { " (\($0))" } ?? ""
+        let set = recent.setName ?? recent.setCode ?? "—"
+        return HStack(spacing: scale.pad(8)) {
+            if model.isNew(recent) {
+                Text("New")
+                    .font(scale.font(11, weight: .semibold))
+                    .foregroundStyle(DS.accent)
+                    .padding(.horizontal, scale.pad(8))
+                    .padding(.vertical, scale.pad(2))
+                    .background(Capsule().fill(DS.selection))
+            }
+            Text("Added \(RelativeTime.string(for: recent.dateAdded)) · \(set)\(code)")
+                .font(scale.font(11))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, scale.pad(16))
+        .padding(.vertical, scale.pad(8))
     }
 
     private var refreshBanner: some View {

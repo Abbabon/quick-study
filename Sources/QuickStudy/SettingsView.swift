@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
     @AppStorage(ClearSearchTimeout.storageKey) private var clearSearchTimeoutSeconds: Double = ClearSearchTimeout.defaultValue
     @AppStorage("appUpdateAutoCheck") private var appUpdateAutoCheck: Bool = true
+    @AppStorage("showRecentlyAdded") private var showRecentlyAdded: Bool = true
     // The OS (SMAppService) is the source of truth; seed from it and resync onAppear.
     @State private var launchAtLogin = LoginItem.isEnabled
 
@@ -42,6 +43,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.inline)
+                Toggle("Show recently added cards", isOn: $showRecentlyAdded)
             }
             Section("Appearance") {
                 VStack(alignment: .leading, spacing: 4) {

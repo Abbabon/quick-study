@@ -11,6 +11,11 @@ final class AppModel: ObservableObject {
     @Published var selectedID: String?
     @Published var selectedCard: Card?
     @Published var pinned: [Card.Mini] = []
+    @Published var recentlyAdded: [Card.Recent] = []
+    /// Session UI state for the Recently Added column (not persisted).
+    @Published var recentlyAddedExpanded: Bool = true
+    /// The recent card currently shown via the column, driving the preview meta strip.
+    @Published var selectedRecent: Card.Recent?
     @Published var refreshState: RefreshState = .idle
     @Published var dbState: DBState = .unknown
     @Published var totalCards: Int = 0
@@ -74,6 +79,26 @@ final class AppModel: ObservableObject {
 
     private final class CachedCard { let card: Card; init(_ c: Card) { self.card = c } }
 
+    /// Cards added within this many days get the accent "new" treatment.
+    static let newWindowDays = 7
+
+    /// Count of recently-added cards that landed within the "new" window.
+    var newCount: Int {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -Self.newWindowDays, to: Date()) ?? Date()
+        return recentlyAdded.filter { $0.dateAdded >= cutoff }.count
+    }
+
+    func isNew(_ recent: Card.Recent) -> Bool {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -Self.newWindowDays, to: Date()) ?? Date()
+        return recent.dateAdded >= cutoff
+    }
+
+    /// Whether the column should appear at all: enabled in settings AND non-empty.
+    var showsRecentColumn: Bool {
+        let enabled = UserDefaults.standard.object(forKey: "showRecentlyAdded") as? Bool ?? true
+        return enabled && !recentlyAdded.isEmpty
+    }
+
     init() {
         self.store = try? CardStore()
         loadPins()
@@ -91,6 +116,7 @@ final class AppModel: ObservableObject {
             } else {
                 dbState = .ready
                 engine.load(try store.loadMinis())
+                recentlyAdded = (try? store.recentlyAdded()) ?? []
             }
             refreshImageCacheSize()
         } catch {
@@ -99,6 +125,18 @@ final class AppModel: ObservableObject {
     }
 
     func runSearch() {
+        // Empty query → browse mode. Preserve a card opened from the Recently Added
+        // column (this also guards the deferred onChange that `selectRecent` triggers
+        // when it clears the query); otherwise fall back to the placeholder.
+        guard !query.isEmpty else {
+            results = []
+            if selectedRecent == nil {
+                selectedID = nil
+                selectedCard = nil
+            }
+            return
+        }
+        selectedRecent = nil
         results = engine.search(query)
         if let first = results.first, selectedID == nil || !results.contains(where: { $0.id == selectedID }) {
             select(first.id)
@@ -119,6 +157,16 @@ final class AppModel: ObservableObject {
     func deselect() {
         selectedID = nil
         selectedCard = nil
+        selectedRecent = nil
+    }
+
+    /// Opens a card from the Recently Added column: selects it, records it for the
+    /// preview meta strip, and clears the query so the panel enters browse mode.
+    func selectRecent(_ recent: Card.Recent) {
+        query = ""
+        results = []
+        select(recent.id)
+        selectedRecent = recent
     }
 
     func select(_ id: String) {
