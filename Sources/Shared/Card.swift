@@ -32,6 +32,9 @@ public struct Card: Codable, Equatable, Sendable {
     public let colors: [String]    // e.g. ["R"], ["W","U"]
     public let imagePath: String?  // relative to Paths.imagesDir, nil if not downloaded
     public let scryfallURI: String
+    public let setCode: String?
+    public let setName: String?
+    public let dateAdded: String?  // "YYYY-MM-DD" (Scryfall released_at), nil if unknown
 
     public init(
         id: String,
@@ -43,7 +46,10 @@ public struct Card: Codable, Equatable, Sendable {
         toughness: String?,
         colors: [String],
         imagePath: String?,
-        scryfallURI: String
+        scryfallURI: String,
+        setCode: String? = nil,
+        setName: String? = nil,
+        dateAdded: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -55,6 +61,9 @@ public struct Card: Codable, Equatable, Sendable {
         self.colors = colors
         self.imagePath = imagePath
         self.scryfallURI = scryfallURI
+        self.setCode = setCode
+        self.setName = setName
+        self.dateAdded = dateAdded
     }
 
     public var identity: ColorIdentity { ColorIdentity(colors: colors) }
@@ -81,6 +90,27 @@ public struct Card: Codable, Equatable, Sendable {
             self.name = name
             self.nameLower = name.lowercased()
             self.identity = identity
+        }
+    }
+
+    /// Projection for the Recently Added column: identity for the thumbnail tint,
+    /// set label, and a parsed date for relative-time + the ≤7-day "new" flag.
+    public struct Recent: Sendable, Equatable, Identifiable {
+        public let id: String
+        public let name: String
+        public let identity: ColorIdentity
+        public let setCode: String?
+        public let setName: String?
+        public let dateAdded: Date
+
+        public init(id: String, name: String, colors: [String],
+                    setCode: String?, setName: String?, dateAdded: Date) {
+            self.id = id
+            self.name = name
+            self.identity = ColorIdentity(colors: colors)
+            self.setCode = setCode
+            self.setName = setName
+            self.dateAdded = dateAdded
         }
     }
 }
