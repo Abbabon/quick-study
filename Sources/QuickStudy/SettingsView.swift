@@ -178,7 +178,11 @@ struct SettingsView: View {
         switch model.refreshState {
         case .idle:
             HStack {
-                Button("Refresh Now") { model.startRefresh(skipImages: false) }
+                Button {
+                    model.startRefresh(skipImages: false)
+                } label: {
+                    Label("Refresh Now", systemImage: "arrow.clockwise")
+                }
                 Button("Refresh Cards Only") { model.startRefresh(skipImages: true) }
             }
         case let .running(phase, done, total):
