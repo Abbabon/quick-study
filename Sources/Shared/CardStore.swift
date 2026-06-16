@@ -69,15 +69,18 @@ public final class CardStore {
     /// Cards ingested within the last `lookbackDays`, newest first. Driven by
     /// `date_added` (the card's Scryfall release date, stamped once on first insert).
     public func recentlyAdded(lookbackDays: Int = 30, limit: Int = 200) throws -> [Card.Recent] {
-        let threshold = Self.dateString(daysAgo: lookbackDays)
+        let lowerBound = Self.dateString(daysAgo: lookbackDays)
+        // Upper-bound at today: unreleased future sets carry a future date and must
+        // not masquerade as "recently added".
+        let upperBound = Self.dateString(daysAgo: 0)
         return try dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT id, name, colors, set_code, set_name, date_added
                 FROM cards
-                WHERE date_added IS NOT NULL AND date_added >= ?
+                WHERE date_added IS NOT NULL AND date_added >= ? AND date_added <= ?
                 ORDER BY date_added DESC
                 LIMIT ?
-                """, arguments: [threshold, limit])
+                """, arguments: [lowerBound, upperBound, limit])
             let decoder = JSONDecoder()
             return rows.compactMap { row in
                 guard let added = Self.parseDate(row["date_added"]) else { return nil }

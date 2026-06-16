@@ -32,6 +32,16 @@ final class CardStoreRecentTests: XCTestCase {
         XCTAssertEqual(recent.first?.setName, "Test Set")
     }
 
+    func testRecentlyAddedExcludesFutureDates() throws {
+        let store = try makeStore()
+        try store.upsert([
+            card("past", "Past Card", daysAgo: 3),
+            card("future", "Unreleased Set Card", daysAgo: -45),  // releases in the future
+        ])
+        let recent = try store.recentlyAdded(lookbackDays: 30, limit: 200)
+        XCTAssertEqual(recent.map(\.id), ["past"])  // future-dated card excluded
+    }
+
     func testRecentlyAddedRespectsLimit() throws {
         let store = try makeStore()
         try store.upsert((0..<10).map { card("id\($0)", "Card \($0)", daysAgo: $0) })
