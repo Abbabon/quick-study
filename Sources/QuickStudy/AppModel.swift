@@ -125,6 +125,17 @@ final class AppModel: ObservableObject {
     }
 
     func runSearch() {
+        // Empty query → browse mode. Preserve a card opened from the Recently Added
+        // column (this also guards the deferred onChange that `selectRecent` triggers
+        // when it clears the query); otherwise fall back to the placeholder.
+        guard !query.isEmpty else {
+            results = []
+            if selectedRecent == nil {
+                selectedID = nil
+                selectedCard = nil
+            }
+            return
+        }
         selectedRecent = nil
         results = engine.search(query)
         if let first = results.first, selectedID == nil || !results.contains(where: { $0.id == selectedID }) {
