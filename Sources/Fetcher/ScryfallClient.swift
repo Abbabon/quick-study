@@ -59,6 +59,9 @@ private struct ScryfallCard: Decodable {
     let card_faces: [Face]?
     let scryfall_uri: String?
     let layout: String?
+    let released_at: String?
+    let set: String?
+    let set_name: String?
 
     struct ImageURIs: Decodable {
         let small: String?
@@ -114,8 +117,22 @@ private struct ScryfallCard: Decodable {
             imagePath: nil,
             // Encode the desired image download URL in scryfall_uri? No — keep that
             // semantically correct. Image URL is resolved at download time below.
-            scryfallURI: scryfallPage
+            scryfallURI: scryfallPage,
+            setCode: set?.uppercased(),
+            setName: set_name,
+            // No release date (rare) → treat as added today so it still surfaces.
+            dateAdded: released_at ?? Self.todayString
         )
+    }
+
+    /// Today in the UTC "YYYY-MM-DD" form used for `date_added`.
+    static var todayString: String {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
     }
 
     /// Exposed for the image-download path so the fetcher can recover the image URL
