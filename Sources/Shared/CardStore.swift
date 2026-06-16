@@ -36,6 +36,13 @@ public final class CardStore {
                 t.column("value", .text).notNull()
             }
         }
+        m.registerMigration("v2") { db in
+            try db.alter(table: "cards") { t in
+                t.add(column: "date_added", .text)
+                t.add(column: "set_code", .text)
+                t.add(column: "set_name", .text)
+            }
+        }
         return m
     }
 
@@ -55,6 +62,30 @@ public final class CardStore {
                 let colorsRaw: String = row["colors"] ?? "[]"
                 let colors = (try? decoder.decode([String].self, from: Data(colorsRaw.utf8))) ?? []
                 return Card.Mini(id: row["id"], name: row["name"], colors: colors)
+            }
+        }
+    }
+
+    /// Cards ingested within the last `lookbackDays`, newest first. Driven by
+    /// `date_added` (the card's Scryfall release date, stamped once on first insert).
+    public func recentlyAdded(lookbackDays: Int = 30, limit: Int = 200) throws -> [Card.Recent] {
+        let threshold = Self.dateString(daysAgo: lookbackDays)
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, name, colors, set_code, set_name, date_added
+                FROM cards
+                WHERE date_added IS NOT NULL AND date_added >= ?
+                ORDER BY date_added DESC
+                LIMIT ?
+                """, arguments: [threshold, limit])
+            let decoder = JSONDecoder()
+            return rows.compactMap { row in
+                guard let added = Self.parseDate(row["date_added"]) else { return nil }
+                let colorsRaw: String = row["colors"] ?? "[]"
+                let colors = (try? decoder.decode([String].self, from: Data(colorsRaw.utf8))) ?? []
+                return Card.Recent(id: row["id"], name: row["name"], colors: colors,
+                                   setCode: row["set_code"], setName: row["set_name"],
+                                   dateAdded: added)
             }
         }
     }
@@ -81,8 +112,8 @@ public final class CardStore {
             for c in cards {
                 let colorsJSON = (try? String(data: JSONEncoder().encode(c.colors), encoding: .utf8)) ?? "[]"
                 try db.execute(sql: """
-                    INSERT INTO cards (id, name, name_lower, mana_cost, type_line, oracle_text, power, toughness, colors, image_path, scryfall_uri)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO cards (id, name, name_lower, mana_cost, type_line, oracle_text, power, toughness, colors, image_path, scryfall_uri, set_code, set_name, date_added)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         name = excluded.name,
                         name_lower = excluded.name_lower,
@@ -92,7 +123,10 @@ public final class CardStore {
                         power = excluded.power,
                         toughness = excluded.toughness,
                         colors = excluded.colors,
-                        scryfall_uri = excluded.scryfall_uri
+                        scryfall_uri = excluded.scryfall_uri,
+                        set_code = excluded.set_code,
+                        set_name = excluded.set_name,
+                        date_added = COALESCE(date_added, excluded.date_added)
                 """, arguments: [
                     c.id, c.name, c.name.lowercased(),
                     c.manaCost, c.typeLine, c.oracleText,
@@ -100,6 +134,7 @@ public final class CardStore {
                     colorsJSON,
                     c.imagePath,
                     c.scryfallURI,
+                    c.setCode, c.setName, c.dateAdded,
                 ])
             }
         }
@@ -125,6 +160,26 @@ public final class CardStore {
     }
 
     // MARK: - Helpers
+
+    /// UTC, day-granularity formatter matching the stored `date_added` ("YYYY-MM-DD").
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    static func dateString(daysAgo: Int) -> String {
+        let date = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
+        return dayFormatter.string(from: date)
+    }
+
+    static func parseDate(_ raw: String?) -> Date? {
+        guard let raw else { return nil }
+        return dayFormatter.date(from: raw)
+    }
 
     private static func cardFromRow(_ row: Row) -> Card {
         let colorsRaw: String = row["colors"] ?? "[]"
