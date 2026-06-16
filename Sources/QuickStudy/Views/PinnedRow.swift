@@ -18,6 +18,9 @@ struct PinnedRow: View {
             }
             .padding(.horizontal, scale.pad(14))
             .padding(.vertical, scale.pad(8))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { model.deselect() }
         }
     }
 
@@ -50,6 +53,6 @@ struct PinnedRow: View {
             .padding(scale.pad(2))
         }
         .contentShape(Rectangle())
-        .onTapGesture { model.select(mini.id) }
+        .onTapGesture { selected ? model.deselect() : model.select(mini.id) }
     }
 }

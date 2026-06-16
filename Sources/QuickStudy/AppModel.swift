@@ -116,6 +116,11 @@ final class AppModel: ObservableObject {
         results = []
     }
 
+    func deselect() {
+        selectedID = nil
+        selectedCard = nil
+    }
+
     func select(_ id: String) {
         selectedID = id
         if let cached = detailCache.object(forKey: id as NSString) {
