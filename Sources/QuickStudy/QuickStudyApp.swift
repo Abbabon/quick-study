@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onOpenSettings = { [weak self] in self?.settingsWindow.show() }
 
         notifier.configure()
-        notifier.onUpdateAction = { [weak self] in self?.model.startRefresh(skipImages: false) }
+        notifier.onUpdateAction = { [weak self] in self?.model.startImageDownload() }
         notifier.onOpenPanel = { [weak self] in self?.panel.show() }
         notifier.onAppUpdateAction = { [weak self] in self?.model.installOrRelaunch() }
 
@@ -49,8 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.image = NSImage(systemSymbolName: "wand.and.stars", accessibilityDescription: "Quick Study")
         }
         let menu = NSMenu()
-        updateMenuItem = NSMenuItem(title: "Update Available — Refresh…",
-                                    action: #selector(refreshNow), keyEquivalent: "")
+        updateMenuItem = NSMenuItem(title: "Download Images…",
+                                    action: #selector(downloadNewImages), keyEquivalent: "")
         updateMenuItem.isHidden = true
         menu.addItem(updateMenuItem)
         appUpdateMenuItem = NSMenuItem(title: "Update QuickStudy…",
@@ -66,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Quit Quick Study", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         for item in menu.items where item.action == #selector(openSearch)
             || item.action == #selector(refreshNow)
+            || item.action == #selector(downloadNewImages)
             || item.action == #selector(openSettings)
             || item.action == #selector(installAppUpdate) {
             item.target = self
@@ -79,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Reflect update state in the menu-bar badge, dropdown item, and notification.
-        model.$updateAvailable
+        model.$newCardsPendingImages
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refreshUpdateUI() }
             .store(in: &cancellables)
@@ -118,9 +119,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// badge, dropdown items, and native notifications. The red dot lights up when either is
     /// pending; each notification is deduped inside `NotificationManager`.
     private func refreshUpdateUI() {
-        let cardUpdate = model.updateAvailable
+        let cardUpdate = model.newCardsPendingImages > 0
         let appActionable = model.appUpdateState.isActionable
 
+        if cardUpdate {
+            let n = model.newCardsPendingImages
+            updateMenuItem?.title = "Download Images (\(n) new card\(n == 1 ? "" : "s"))…"
+        }
         updateMenuItem?.isHidden = !cardUpdate
 
         switch model.appUpdateState {
@@ -156,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if cardUpdate, let stamp = model.availableUpdateStamp {
-            notifier.notifyIfNeeded(stamp: stamp)
+            notifier.notifyIfNeeded(stamp: stamp, newCards: model.newCardsPendingImages)
         }
         if appActionable, let version = model.appUpdateState.version {
             notifier.notifyAppUpdateIfNeeded(version: version)
@@ -171,6 +176,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func refreshNow() {
         model.startRefresh(skipImages: false)
+    }
+
+    @objc private func downloadNewImages() {
+        model.startImageDownload()
     }
 
     @objc private func installAppUpdate() {
