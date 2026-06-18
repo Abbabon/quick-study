@@ -26,6 +26,7 @@ struct FetcherMain {
 
             // 3. Parse + ingest
             let cards = try client.parseBulk(at: bulkURL)
+            let countBefore = try store.count()
             emitter.emit(phase: "ingest", done: 0, total: cards.count)
             // Upsert in batches so SQLite write-locks don't dominate.
             let batchSize = 1000
@@ -37,10 +38,13 @@ struct FetcherMain {
             }
             try store.setMeta("last_refresh", ISO8601DateFormatter().string(from: Date()))
             try store.setMeta("bulk_updated_at", info.updated_at)
+            // The fetcher never deletes cards, so the row-count delta is the number
+            // of brand-new cards this ingest added.
+            let newCards = max(0, try store.count() - countBefore)
 
             // 4. Image download (unless --no-images)
             if skipImages {
-                emitter.emit(phase: "done", message: "skipping images")
+                emitter.emit(phase: "done", message: "skipping images", newCards: newCards)
                 return
             }
             let refs = try client.extractImageRefs(at: bulkURL)
@@ -49,7 +53,7 @@ struct FetcherMain {
             await downloader.download(refs: refs, store: store) { done, total in
                 emitter.emit(phase: "images", done: done, total: total)
             }
-            emitter.emit(phase: "done", message: "complete")
+            emitter.emit(phase: "done", message: "complete", newCards: newCards)
         } catch {
             emitter.emit(phase: "error", message: "\(error)")
             exit(1)
