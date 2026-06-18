@@ -41,4 +41,24 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertNotNil(UpdateChecker.parse("2024-06-10T09:00:31+00:00"))
         XCTAssertNotNil(UpdateChecker.parse(newer))
     }
+
+    func testIsNewerThanIngestedTrueWhenRemoteNewer() {
+        XCTAssertTrue(UpdateChecker.isNewerThanIngested(remote: newer, ingested: older))
+    }
+
+    func testIsNewerThanIngestedFalseWhenEqual() {
+        XCTAssertFalse(UpdateChecker.isNewerThanIngested(remote: newer, ingested: newer))
+    }
+
+    func testIsNewerThanIngestedFalseWhenOlder() {
+        XCTAssertFalse(UpdateChecker.isNewerThanIngested(remote: older, ingested: newer))
+    }
+
+    func testIsNewerThanIngestedFalseWithNoBaseline() {
+        XCTAssertFalse(UpdateChecker.isNewerThanIngested(remote: newer, ingested: nil))
+    }
+
+    func testIsNewerThanIngestedFalseOnMalformedRemote() {
+        XCTAssertFalse(UpdateChecker.isNewerThanIngested(remote: "nope", ingested: older))
+    }
 }

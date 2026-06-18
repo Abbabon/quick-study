@@ -418,7 +418,7 @@ struct SettingsView: View {
     private var statusBadge: some View {
         if model.updateAvailable {
             Label {
-                Text("Update available" + (model.availableUpdateDisplay.map { " (Scryfall \($0))" } ?? ""))
+                Text("\(model.newCardsPendingImages) new card\(model.newCardsPendingImages == 1 ? "" : "s") added — images pending")
             } icon: {
                 Image(systemName: "exclamationmark.circle.fill")
             }

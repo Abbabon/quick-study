@@ -21,8 +21,14 @@ final class AppModel: ObservableObject {
     @Published var totalCards: Int = 0
     @Published var lastRefresh: String?
     @Published var imageCacheSizeFormatted: String = "—"
-    /// True when Scryfall has card data newer than what we last ingested.
-    @Published var updateAvailable: Bool = false
+    /// Number of brand-new cards ingested in the background whose images are not yet
+    /// downloaded. Drives the menu-bar dot, dropdown item, and notification.
+    @Published var newCardsPendingImages: Int = 0
+    /// Back-compat alias for existing view bindings: true while images are pending.
+    var updateAvailable: Bool { newCardsPendingImages > 0 }
+    /// Set while a background silent ingest is running, so the cheap check doesn't
+    /// launch a second fetcher and `startRefresh`/`startImageDownload` can defer.
+    private var backgroundSyncing = false
     /// The remote `oracle_cards.updated_at` behind `updateAvailable`, for display.
     @Published var availableUpdateStamp: String?
     /// State of the app self-update flow (separate from the card-data update above).
@@ -307,15 +313,77 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             guard let remote = await UpdateChecker.fetchLatestStamp() else { return }
             defaults.set(now, forKey: UpdateKeys.lastCheck)
-            let ingested = try? self.store?.meta("bulk_updated_at")
-            let dismissed = defaults.string(forKey: UpdateKeys.dismissedStamp)
-            if UpdateChecker.shouldPrompt(remote: remote,
-                                          ingested: ingested ?? nil,
-                                          dismissed: dismissed) {
-                self.availableUpdateStamp = remote
-                self.updateAvailable = true
-            } else {
-                self.updateAvailable = false
+            let ingested = (try? self.store?.meta("bulk_updated_at")) ?? nil
+            // Newer bulk → silently ingest card text so search stays current. The dot
+            // is decided afterward from the actual new-card count.
+            if UpdateChecker.isNewerThanIngested(remote: remote, ingested: ingested) {
+                self.runSilentIngest(stamp: remote)
+            }
+        }
+    }
+
+    /// Runs `mtg-fetcher --no-images` in the background (no visible progress). On
+    /// completion, if brand-new cards were added and `stamp` isn't dismissed, lights
+    /// the dot/notification by setting `newCardsPendingImages`.
+    private func runSilentIngest(stamp: String) {
+        guard !backgroundSyncing else { return }
+        // Don't run two fetchers against the DB at once; a manual refresh wins.
+        if case .running = refreshState { return }
+        backgroundSyncing = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.fetcher.run(mode: .ingestOnly) { event in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    switch event.phase {
+                    case "done":
+                        self.refreshDBState()
+                        let dismissed = UserDefaults.standard.string(forKey: UpdateKeys.dismissedStamp)
+                        let suppressed: Bool = {
+                            guard let dismissed, let d = UpdateChecker.parse(dismissed),
+                                  let r = UpdateChecker.parse(stamp) else { return false }
+                            return d >= r
+                        }()
+                        if let added = event.newCards, added > 0, !suppressed {
+                            self.availableUpdateStamp = stamp
+                            self.newCardsPendingImages = added
+                        }
+                    case "error":
+                        break // leave state unchanged; next check retries
+                    default:
+                        break
+                    }
+                }
+            }
+            self.backgroundSyncing = false
+        }
+    }
+
+    /// Downloads images for cards already ingested (user-initiated from the dot/menu/
+    /// Settings). Reuses the on-disk bulk JSON; only missing images are fetched.
+    /// Shows progress via `refreshState`.
+    func startImageDownload() {
+        guard case .idle = refreshState, !backgroundSyncing else { return }
+        refreshState = .running(phase: "images", done: 0, total: 0)
+        Task { [weak self] in
+            await self?.fetcher.run(mode: .imagesOnly) { event in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    switch event.phase {
+                    case "done":
+                        self.refreshState = .idle
+                        self.refreshDBState()
+                        self.newCardsPendingImages = 0
+                    case "error":
+                        self.refreshState = .error(event.message ?? "unknown error")
+                    case "exit":
+                        if case .running = self.refreshState { self.refreshState = .idle }
+                    default:
+                        self.refreshState = .running(phase: event.phase,
+                                                     done: event.done ?? 0,
+                                                     total: event.total ?? 0)
+                    }
+                }
             }
         }
     }
@@ -325,7 +393,7 @@ final class AppModel: ObservableObject {
         if let stamp = availableUpdateStamp {
             UserDefaults.standard.set(stamp, forKey: UpdateKeys.dismissedStamp)
         }
-        updateAvailable = false
+        newCardsPendingImages = 0
     }
 
     /// Human-friendly form of `availableUpdateStamp` for banners/Settings.
@@ -440,10 +508,10 @@ final class AppModel: ObservableObject {
     // MARK: - Refresh
 
     func startRefresh(skipImages: Bool = false) {
-        guard case .idle = refreshState else { return }
+        guard case .idle = refreshState, !backgroundSyncing else { return }
         refreshState = .running(phase: "starting", done: 0, total: 0)
         Task { [weak self] in
-            await self?.fetcher.run(skipImages: skipImages) { event in
+            await self?.fetcher.run(mode: skipImages ? .ingestOnly : .full) { event in
                 Task { @MainActor [weak self] in
                     self?.applyFetcherEvent(event)
                 }
@@ -457,7 +525,7 @@ final class AppModel: ObservableObject {
             refreshState = .idle
             refreshDBState()
             // Baseline (`bulk_updated_at`) is now current, so any pending prompt is stale.
-            updateAvailable = false
+            newCardsPendingImages = 0
         case "error":
             refreshState = .error(event.message ?? "unknown error")
         case "exit":

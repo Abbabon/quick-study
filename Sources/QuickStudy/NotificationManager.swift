@@ -28,7 +28,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         let action = UNNotificationAction(identifier: Self.updateActionID,
-                                          title: "Update Now",
+                                          title: "Download Images",
                                           options: [.foreground])
         let category = UNNotificationCategory(identifier: Self.categoryID,
                                               actions: [action],
@@ -46,7 +46,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     /// Posts a notification for `stamp` unless one was already posted for it. Requests
     /// authorization lazily (on first real update) so the system prompt has context.
-    func notifyIfNeeded(stamp: String) {
+    func notifyIfNeeded(stamp: String, newCards: Int) {
         guard UserDefaults.standard.string(forKey: notifiedStampKey) != stamp else { return }
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { [weak self] settings in
@@ -54,20 +54,20 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             switch settings.authorizationStatus {
             case .notDetermined:
                 center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-                    if granted { self.post(stamp: stamp) }
+                    if granted { self.post(stamp: stamp, newCards: newCards) }
                 }
             case .authorized, .provisional:
-                self.post(stamp: stamp)
+                self.post(stamp: stamp, newCards: newCards)
             default:
                 break // denied — respect the user's choice; other surfaces still show it.
             }
         }
     }
 
-    private func post(stamp: String) {
+    private func post(stamp: String, newCards: Int) {
         let content = UNMutableNotificationContent()
         content.title = "Quick Study"
-        content.body = "New Magic cards are available — update your collection."
+        content.body = "Added \(newCards) new card\(newCards == 1 ? "" : "s"). Download images for offline use?"
         content.categoryIdentifier = Self.categoryID
         content.sound = .default
         let request = UNNotificationRequest(identifier: "card-update-\(stamp)",

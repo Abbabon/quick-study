@@ -23,17 +23,19 @@ public final class ProgressEmitter {
         public let done: Int?
         public let total: Int?
         public let message: String?
+        public let newCards: Int?       // count of brand-new cards (on "done" after ingest)
     }
 
-    public func emit(phase: String, done: Int? = nil, total: Int? = nil, message: String? = nil) {
-        let event = Event(phase: phase, done: done, total: total, message: message)
+    public func emit(phase: String, done: Int? = nil, total: Int? = nil,
+                     message: String? = nil, newCards: Int? = nil) {
+        let event = Event(phase: phase, done: done, total: total, message: message, newCards: newCards)
         if let data = try? encoder.encode(event),
            var line = String(data: data, encoding: .utf8) {
             line.append("\n")
             FileHandle.standardOutput.write(Data(line.utf8))
         }
         let stamp = ISO8601DateFormatter().string(from: Date())
-        let human = "[\(stamp)] \(phase) done=\(done.map(String.init) ?? "-") total=\(total.map(String.init) ?? "-") \(message ?? "")\n"
+        let human = "[\(stamp)] \(phase) done=\(done.map(String.init) ?? "-") total=\(total.map(String.init) ?? "-") newCards=\(newCards.map(String.init) ?? "-") \(message ?? "")\n"
         logHandle?.write(Data(human.utf8))
     }
 }
