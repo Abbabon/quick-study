@@ -125,6 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if cardUpdate {
             let n = model.newCardsPendingImages
             updateMenuItem?.title = "Download Images (\(n) new card\(n == 1 ? "" : "s"))…"
+        } else {
+            updateMenuItem?.title = "Download Images…"
         }
         updateMenuItem?.isHidden = !cardUpdate
 

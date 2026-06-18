@@ -317,7 +317,6 @@ final class AppModel: ObservableObject {
             // Newer bulk → silently ingest card text so search stays current. The dot
             // is decided afterward from the actual new-card count.
             if UpdateChecker.isNewerThanIngested(remote: remote, ingested: ingested) {
-                self.availableUpdateStamp = remote
                 self.runSilentIngest(stamp: remote)
             }
         }
@@ -331,8 +330,9 @@ final class AppModel: ObservableObject {
         // Don't run two fetchers against the DB at once; a manual refresh wins.
         if case .running = refreshState { return }
         backgroundSyncing = true
-        Task { [weak self] in
-            await self?.fetcher.run(mode: .ingestOnly) { event in
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.fetcher.run(mode: .ingestOnly) { event in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     switch event.phase {
@@ -345,17 +345,17 @@ final class AppModel: ObservableObject {
                             return d >= r
                         }()
                         if let added = event.newCards, added > 0, !suppressed {
+                            self.availableUpdateStamp = stamp
                             self.newCardsPendingImages = added
                         }
                     case "error":
                         break // leave state unchanged; next check retries
-                    case "exit":
-                        self.backgroundSyncing = false
                     default:
                         break
                     }
                 }
             }
+            self.backgroundSyncing = false
         }
     }
 
