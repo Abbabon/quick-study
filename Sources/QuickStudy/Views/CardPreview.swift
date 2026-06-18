@@ -27,15 +27,7 @@ struct CardPreview: View {
                 .frame(maxWidth: 330, maxHeight: 480)
                 .dsCardShadow()
             VStack(alignment: .leading, spacing: scale.pad(8)) {
-                HStack(spacing: scale.pad(8)) {
-                    Text(card.name).font(scale.font(17, weight: .bold))
-                    IdentityBadge(colors: card.colors)
-                    Spacer()
-                    if let cost = card.manaCost, !cost.isEmpty {
-                        ManaCostView(cost: cost, size: scale.size(16))
-                    }
-                    pinButton(scale: scale)
-                }
+                header(card: card, scale: scale)
                 if let type = card.typeLine {
                     Text(type).font(scale.font(12)).foregroundStyle(.secondary)
                 }
@@ -52,6 +44,41 @@ struct CardPreview: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// Card name + identity badge + mana cost + pin. Prefers a single row, but
+    /// when the name would be squished it drops the badge/cost/pin to a second
+    /// row so the title always gets the full width (wrapping if it must).
+    @ViewBuilder
+    private func header(card: Card, scale: UIScale) -> some View {
+        let title = Text(card.name).font(scale.font(17, weight: .bold))
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: scale.pad(8)) {
+                title.lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                IdentityBadge(colors: card.colors)
+                Spacer(minLength: scale.pad(8))
+                metaControls(card: card, scale: scale)
+            }
+            VStack(alignment: .leading, spacing: scale.pad(6)) {
+                title.fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: scale.pad(8)) {
+                    IdentityBadge(colors: card.colors)
+                    if let cost = card.manaCost, !cost.isEmpty {
+                        ManaCostView(cost: cost, size: scale.size(16))
+                    }
+                    Spacer(minLength: scale.pad(8))
+                    pinButton(scale: scale)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func metaControls(card: Card, scale: UIScale) -> some View {
+        if let cost = card.manaCost, !cost.isEmpty {
+            ManaCostView(cost: cost, size: scale.size(16))
+        }
+        pinButton(scale: scale)
     }
 
     private func pinButton(scale: UIScale) -> some View {

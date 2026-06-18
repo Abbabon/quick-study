@@ -67,6 +67,17 @@ struct SearchPanel: View {
                 .onSubmit { handleEnter() }
                 .onKeyPress(.upArrow) { model.selectPrev(); return .handled }
                 .onKeyPress(.downArrow) { model.selectNext(); return .handled }
+            Button {
+                model.onOpenSettings?()
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(scale.font(18))
+                    .foregroundStyle(.secondary)
+                    .frame(width: scale.size(30), height: scale.size(30))
+                    .contentShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
+            }
+            .buttonStyle(.plain)
+            .help("Settings")
         }
         .padding(.horizontal, scale.pad(18))
         .padding(.vertical, scale.pad(14))
@@ -277,6 +288,13 @@ enum EnterBehavior: String, CaseIterable, Identifiable {
         switch self {
         case .copyName: return "Copy card name to clipboard"
         case .openScryfall: return "Open Scryfall page in browser"
+        }
+    }
+    /// Compact label for the segmented control in Settings.
+    var shortLabel: String {
+        switch self {
+        case .copyName: return "Copy name"
+        case .openScryfall: return "Open Scryfall"
         }
     }
 }

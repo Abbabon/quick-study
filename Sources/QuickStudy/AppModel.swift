@@ -37,6 +37,10 @@ final class AppModel: ObservableObject {
     /// can resize to fit/free the pinned row without compromising the preview.
     var onPinnedChange: (() -> Void)?
 
+    /// Invoked (on the main actor) to open the Settings window — wired by
+    /// `AppDelegate` so the in-panel gear button can reach it without the menu bar.
+    var onOpenSettings: (() -> Void)?
+
     enum DBState: Equatable {
         case unknown, empty, ready
     }

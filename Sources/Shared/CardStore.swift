@@ -66,8 +66,10 @@ public final class CardStore {
         }
     }
 
-    /// Cards ingested within the last `lookbackDays`, newest first. Driven by
-    /// `date_added` (the card's Scryfall release date, stamped once on first insert).
+    /// Cards that appeared on Scryfall within the last `lookbackDays`, newest first.
+    /// Driven by `date_added`, which holds the earliest date Scryfall reports for the
+    /// card — its spoiler/preview date when present, otherwise its release date — so
+    /// freshly-spoiled (but unreleased) cards surface ahead of already-released ones.
     public func recentlyAdded(lookbackDays: Int = 30, limit: Int = 200) throws -> [Card.Recent] {
         let lowerBound = Self.dateString(daysAgo: lookbackDays)
         // Upper-bound at today: unreleased future sets carry a future date and must
@@ -129,7 +131,12 @@ public final class CardStore {
                         scryfall_uri = excluded.scryfall_uri,
                         set_code = excluded.set_code,
                         set_name = excluded.set_name,
-                        date_added = COALESCE(date_added, excluded.date_added)
+                        -- Keep the EARLIEST date Scryfall reports for this card: when a
+                        -- future-dated set is later spoiled, `previewed_at` (computed into
+                        -- excluded.date_added) is earlier than the frozen `released_at`, so
+                        -- MIN moves it back to its spoiler date. A plain COALESCE froze the
+                        -- first value and left spoiled cards stuck at a future release date.
+                        date_added = min(COALESCE(date_added, excluded.date_added), excluded.date_added)
                 """, arguments: [
                     c.id, c.name, c.name.lowercased(),
                     c.manaCost, c.typeLine, c.oracleText,

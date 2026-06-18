@@ -33,8 +33,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // no Dock icon
+        Appearance.apply(Appearance.current()) // honor the saved Light/Dark/Auto choice
 
         panel = PanelController(model: model)
+
+        model.onOpenSettings = { [weak self] in self?.settingsWindow.show() }
 
         notifier.configure()
         notifier.onUpdateAction = { [weak self] in self?.model.startRefresh(skipImages: false) }
