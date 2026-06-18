@@ -14,6 +14,16 @@ enum UpdateChecker {
         catch { return nil }
     }
 
+    /// True when Scryfall's bulk is strictly newer than our ingested baseline.
+    /// Unlike `shouldPrompt`, this ignores the dismissed stamp: a newer bulk should
+    /// always trigger a silent ingest so search stays current; the dismissed stamp
+    /// only suppresses the user-facing dot/notification afterward.
+    static func isNewerThanIngested(remote: String, ingested: String?) -> Bool {
+        guard let remoteDate = parse(remote) else { return false }
+        guard let ingestedDate = ingested.flatMap(parse) else { return false }
+        return remoteDate > ingestedDate
+    }
+
     /// Pure decision used by both the live check and the unit tests.
     ///
     /// Prompt only when we have a baseline (`ingested`), the remote stamp is strictly
