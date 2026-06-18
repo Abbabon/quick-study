@@ -443,7 +443,7 @@ final class AppModel: ObservableObject {
         guard case .idle = refreshState else { return }
         refreshState = .running(phase: "starting", done: 0, total: 0)
         Task { [weak self] in
-            await self?.fetcher.run(skipImages: skipImages) { event in
+            await self?.fetcher.run(mode: skipImages ? .ingestOnly : .full) { event in
                 Task { @MainActor [weak self] in
                     self?.applyFetcherEvent(event)
                 }

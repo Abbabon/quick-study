@@ -29,6 +29,20 @@ final class FetcherProcess {
         let newCards: Int?
     }
 
+    enum Mode {
+        case full          // json → ingest → images
+        case ingestOnly    // json → ingest (no images)
+        case imagesOnly    // reuse bulk JSON → images only
+
+        var arguments: [String] {
+            switch self {
+            case .full: return []
+            case .ingestOnly: return ["--no-images"]
+            case .imagesOnly: return ["--images-only"]
+            }
+        }
+    }
+
     private struct EventDecoded: Decodable {
         let phase: String
         let done: Int?
@@ -56,14 +70,14 @@ final class FetcherProcess {
     }
 
     /// Runs the fetcher and yields events as they arrive on stdout.
-    func run(skipImages: Bool, onEvent: @escaping (Event) -> Void) async {
+    func run(mode: Mode, onEvent: @escaping (Event) -> Void) async {
         guard let path = resolveFetcherPath() else {
             onEvent(Event(phase: "error", done: nil, total: nil, message: "mtg-fetcher not found", newCards: nil))
             return
         }
         let process = Process()
         process.executableURL = path
-        process.arguments = skipImages ? ["--no-images"] : []
+        process.arguments = mode.arguments
 
         let outPipe = Pipe()
         let errPipe = Pipe()
