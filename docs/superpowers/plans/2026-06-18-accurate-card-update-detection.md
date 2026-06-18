@@ -211,7 +211,7 @@ In `Sources/Fetcher/Fetcher.swift`, replace the ingest block (lines ~27–44, fr
 ```swift
             // 3. Parse + ingest
             let cards = try client.parseBulk(at: bulkURL)
-            let countBefore = try store.cardCount()
+            let countBefore = try store.count()
             emitter.emit(phase: "ingest", done: 0, total: cards.count)
             // Upsert in batches so SQLite write-locks don't dominate.
             let batchSize = 1000
@@ -225,7 +225,7 @@ In `Sources/Fetcher/Fetcher.swift`, replace the ingest block (lines ~27–44, fr
             try store.setMeta("bulk_updated_at", info.updated_at)
             // The fetcher never deletes cards, so the row-count delta is the number
             // of brand-new cards this ingest added.
-            let newCards = max(0, try store.cardCount() - countBefore)
+            let newCards = max(0, try store.count() - countBefore)
 
             // 4. Image download (unless --no-images)
             if skipImages {
