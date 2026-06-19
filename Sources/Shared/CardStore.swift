@@ -43,6 +43,27 @@ public final class CardStore {
                 t.add(column: "set_name", .text)
             }
         }
+        m.registerMigration("v3") { db in
+            // `first_seen` = when the card first appeared in our DB, the honest
+            // "is this new" signal. Scryfall's `date_added` (preview/release date) is
+            // unreliable: products like Commander precons get bulk-added with only a
+            // future `released_at` and no per-card preview date, so date-based detection
+            // hid genuinely-new spoilers behind their release date.
+            try db.alter(table: "cards") { t in
+                t.add(column: "first_seen", .text).indexed()
+            }
+            // Backfill: the earlier of (date_added, today). Future-dated unreleased
+            // spoilers clamp to today so they surface now; already-released cards keep
+            // their real date so genuinely-old cards stay out of the recent window.
+            // Cards with no date stay NULL (we can't attribute a first-seen retroactively).
+            let today = Self.dateString(daysAgo: 0)
+            try db.execute(sql: """
+                UPDATE cards SET first_seen =
+                    CASE WHEN date_added IS NULL THEN NULL
+                         WHEN date_added > ? THEN ?
+                         ELSE date_added END
+                """, arguments: [today, today])
+        }
         return m
     }
 
@@ -67,31 +88,29 @@ public final class CardStore {
         }
     }
 
-    /// Cards that appeared on Scryfall within the last `lookbackDays`, newest first.
-    /// Driven by `date_added`, which holds the earliest date Scryfall reports for the
-    /// card — its spoiler/preview date when present, otherwise its release date — so
-    /// freshly-spoiled (but unreleased) cards surface ahead of already-released ones.
+    /// Cards that first appeared in our DB within the last `lookbackDays`, newest first.
+    /// Driven by `first_seen` (set to ingest time on insert), not Scryfall's dates, so a
+    /// freshly-ingested card surfaces regardless of its release date — including spoiled
+    /// cards whose set is still unreleased. `first_seen` is never in the future, so no
+    /// upper bound is needed.
     public func recentlyAdded(lookbackDays: Int = 30, limit: Int = 200) throws -> [Card.Recent] {
         let lowerBound = Self.dateString(daysAgo: lookbackDays)
-        // Upper-bound at today: unreleased future sets carry a future date and must
-        // not masquerade as "recently added".
-        let upperBound = Self.dateString(daysAgo: 0)
         return try dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
-                SELECT id, name, colors, set_code, set_name, date_added
+                SELECT id, name, colors, set_code, set_name, first_seen
                 FROM cards
-                WHERE date_added IS NOT NULL AND date_added >= ? AND date_added <= ?
-                ORDER BY date_added DESC
+                WHERE first_seen IS NOT NULL AND first_seen >= ?
+                ORDER BY first_seen DESC, name ASC
                 LIMIT ?
-                """, arguments: [lowerBound, upperBound, limit])
+                """, arguments: [lowerBound, limit])
             let decoder = JSONDecoder()
             return rows.compactMap { row in
-                guard let added = Self.parseDate(row["date_added"]) else { return nil }
+                guard let seen = Self.parseDate(row["first_seen"]) else { return nil }
                 let colorsRaw: String = row["colors"] ?? "[]"
                 let colors = (try? decoder.decode([String].self, from: Data(colorsRaw.utf8))) ?? []
                 return Card.Recent(id: row["id"], name: row["name"], colors: colors,
                                    setCode: row["set_code"], setName: row["set_name"],
-                                   dateAdded: added)
+                                   firstSeen: seen)
             }
         }
     }
@@ -114,12 +133,18 @@ public final class CardStore {
     // MARK: - Writes (fetcher only)
 
     public func upsert(_ cards: [Card]) throws {
+        // Stamp brand-new rows with their first-seen date: the earlier of today (now,
+        // when we're ingesting) and the card's own date. Future-dated spoilers clamp to
+        // today so they read as "just appeared"; back-catalog cards keep their real date
+        // so a one-off ingest of old data doesn't flood Recently Added.
+        let today = Self.dateString(daysAgo: 0)
         try dbQueue.write { db in
             for c in cards {
                 let colorsJSON = (try? String(data: JSONEncoder().encode(c.colors), encoding: .utf8)) ?? "[]"
+                let firstSeen = (c.dateAdded.map { $0 < today ? $0 : today }) ?? today
                 try db.execute(sql: """
-                    INSERT INTO cards (id, name, name_lower, mana_cost, type_line, oracle_text, power, toughness, colors, image_path, scryfall_uri, set_code, set_name, date_added)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO cards (id, name, name_lower, mana_cost, type_line, oracle_text, power, toughness, colors, image_path, scryfall_uri, set_code, set_name, date_added, first_seen)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         name = excluded.name,
                         name_lower = excluded.name_lower,
@@ -138,6 +163,8 @@ public final class CardStore {
                         -- MIN moves it back to its spoiler date. A plain COALESCE froze the
                         -- first value and left spoiled cards stuck at a future release date.
                         date_added = min(COALESCE(date_added, excluded.date_added), excluded.date_added)
+                        -- first_seen is intentionally NOT updated: it records when we first
+                        -- saw the card and must never move once set.
                 """, arguments: [
                     c.id, c.name, c.name.lowercased(),
                     c.manaCost, c.typeLine, c.oracleText,
@@ -145,7 +172,7 @@ public final class CardStore {
                     colorsJSON,
                     c.imagePath,
                     c.scryfallURI,
-                    c.setCode, c.setName, c.dateAdded,
+                    c.setCode, c.setName, c.dateAdded, firstSeen,
                 ])
             }
         }

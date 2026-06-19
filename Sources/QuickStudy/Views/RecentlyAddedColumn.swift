@@ -103,7 +103,7 @@ private struct RecentRow: View {
         (
             Text(recent.setName ?? recent.setCode ?? "—")
                 .foregroundStyle(.secondary)
-            + Text(" · \(RelativeTime.string(for: recent.dateAdded))")
+            + Text(" · \(RelativeTime.string(for: recent.firstSeen))")
                 .foregroundStyle(.tertiary)
         )
         .font(scale.font(11))
