@@ -74,22 +74,31 @@ public struct Card: Codable, Equatable, Sendable {
         public let name: String
         public let nameLower: String
         public let identity: ColorIdentity
+        /// Lowercased set abbreviation (e.g. "msc"); set codes are stored uppercase in the DB.
+        public let setCodeLower: String?
+        /// Lowercased full set name (e.g. "modern horizons").
+        public let setNameLower: String?
 
         /// Legacy init for callers with no colors data; identity will be .colorless.
         public init(id: String, name: String) {
             self.init(id: id, name: name, identity: .colorless)
         }
 
-        public init(id: String, name: String, colors: [String]) {
-            self.init(id: id, name: name, identity: ColorIdentity(colors: colors))
+        public init(id: String, name: String, colors: [String],
+                    setCode: String? = nil, setName: String? = nil) {
+            self.init(id: id, name: name, identity: ColorIdentity(colors: colors),
+                      setCode: setCode, setName: setName)
         }
 
         /// Direct init for callers that already know the identity (e.g. pin deserialization).
-        public init(id: String, name: String, identity: ColorIdentity) {
+        public init(id: String, name: String, identity: ColorIdentity,
+                    setCode: String? = nil, setName: String? = nil) {
             self.id = id
             self.name = name
             self.nameLower = name.lowercased()
             self.identity = identity
+            self.setCodeLower = setCode?.lowercased()
+            self.setNameLower = setName?.lowercased()
         }
     }
 
