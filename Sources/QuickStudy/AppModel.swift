@@ -95,12 +95,12 @@ final class AppModel: ObservableObject {
     /// Count of recently-added cards that landed within the "new" window.
     var newCount: Int {
         let cutoff = Calendar.current.date(byAdding: .day, value: -Self.newWindowDays, to: Date()) ?? Date()
-        return recentlyAdded.filter { $0.dateAdded >= cutoff }.count
+        return recentlyAdded.filter { $0.firstSeen >= cutoff }.count
     }
 
     func isNew(_ recent: Card.Recent) -> Bool {
         let cutoff = Calendar.current.date(byAdding: .day, value: -Self.newWindowDays, to: Date()) ?? Date()
-        return recent.dateAdded >= cutoff
+        return recent.firstSeen >= cutoff
     }
 
     /// Whether the column should appear at all: enabled in settings AND non-empty.

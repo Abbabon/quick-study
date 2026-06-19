@@ -103,23 +103,24 @@ public struct Card: Codable, Equatable, Sendable {
     }
 
     /// Projection for the Recently Added column: identity for the thumbnail tint,
-    /// set label, and a parsed date for relative-time + the ≤7-day "new" flag.
+    /// set label, and `firstSeen` — the date the card first appeared in our DB —
+    /// driving newest-first ordering, relative-time, and the ≤7-day "new" flag.
     public struct Recent: Sendable, Equatable, Identifiable {
         public let id: String
         public let name: String
         public let identity: ColorIdentity
         public let setCode: String?
         public let setName: String?
-        public let dateAdded: Date
+        public let firstSeen: Date
 
         public init(id: String, name: String, colors: [String],
-                    setCode: String?, setName: String?, dateAdded: Date) {
+                    setCode: String?, setName: String?, firstSeen: Date) {
             self.id = id
             self.name = name
             self.identity = ColorIdentity(colors: colors)
             self.setCode = setCode
             self.setName = setName
-            self.dateAdded = dateAdded
+            self.firstSeen = firstSeen
         }
     }
 }

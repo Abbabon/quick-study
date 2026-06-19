@@ -148,7 +148,7 @@ struct SearchPanel: View {
                     .padding(.vertical, scale.pad(2))
                     .background(Capsule().fill(DS.selection))
             }
-            Text("Added \(RelativeTime.string(for: recent.dateAdded)) · \(set)\(code)")
+            Text("Added \(RelativeTime.string(for: recent.firstSeen)) · \(set)\(code)")
                 .font(scale.font(11))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
