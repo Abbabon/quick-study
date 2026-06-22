@@ -169,11 +169,11 @@ private struct HeroCard: View {
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.surface)
-                RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.accentGradient).opacity(0.14)
-                DS.accentBloom(opacity: 0.45)
-                    .frame(width: 180, height: 180)
+                RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.accentGradient).opacity(0.28)
+                DS.accentBloom(opacity: 0.6, radius: 95)
+                    .frame(width: 230, height: 230)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .offset(x: 30, y: -34)
+                    .offset(x: 40, y: -44)
             }
             .clipShape(RoundedRectangle(cornerRadius: DS.Radius.lg))
         }
