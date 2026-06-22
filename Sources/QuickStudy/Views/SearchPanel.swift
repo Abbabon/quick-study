@@ -68,6 +68,17 @@ struct SearchPanel: View {
                 .onKeyPress(.upArrow) { model.selectPrev(); return .handled }
                 .onKeyPress(.downArrow) { model.selectNext(); return .handled }
             Button {
+                model.onOpenGame?()
+            } label: {
+                Image(systemName: "gamecontroller")
+                    .font(scale.font(18))
+                    .foregroundStyle(.secondary)
+                    .frame(width: scale.size(30), height: scale.size(30))
+                    .contentShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
+            }
+            .buttonStyle(.plain)
+            .help("Play")
+            Button {
                 model.onOpenSettings?()
             } label: {
                 Image(systemName: "gearshape")

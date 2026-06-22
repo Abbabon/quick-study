@@ -21,6 +21,9 @@ final class AppModel: ObservableObject {
     @Published var totalCards: Int = 0
     @Published var lastRefresh: String?
     @Published var imageCacheSizeFormatted: String = "—"
+    /// Number of distinct artworks ingested for the game modes (0 = not downloaded yet).
+    @Published var artworkCount: Int = 0
+    @Published var artCacheSizeFormatted: String = "—"
     /// Number of brand-new cards ingested in the background whose images are not yet
     /// downloaded. Drives the menu-bar dot, dropdown item, and notification.
     @Published var newCardsPendingImages: Int = 0
@@ -46,6 +49,10 @@ final class AppModel: ObservableObject {
     /// Invoked (on the main actor) to open the Settings window — wired by
     /// `AppDelegate` so the in-panel gear button can reach it without the menu bar.
     var onOpenSettings: (() -> Void)?
+
+    /// Invoked (on the main actor) to open the game window — wired by `AppDelegate`
+    /// so the in-panel play button can reach it without the menu bar.
+    var onOpenGame: (() -> Void)?
 
     enum DBState: Equatable {
         case unknown, empty, ready
@@ -129,6 +136,7 @@ final class AppModel: ObservableObject {
                 recentlyAdded = (try? store.recentlyAdded()) ?? []
             }
             refreshImageCacheSize()
+            refreshArtworkState()
         } catch {
             dbState = .unknown
         }
@@ -286,6 +294,59 @@ final class AppModel: ObservableObject {
     func clearImageCache() -> Int64 {
         let freed = (try? ImageCache.clear(at: Paths.imagesDir)) ?? 0
         refreshImageCacheSize()
+        return freed
+    }
+
+    // MARK: - Artwork / game modes
+
+    /// Refreshes the published artwork count and art-cache size.
+    func refreshArtworkState() {
+        artworkCount = (try? store?.artworkCount()) ?? 0
+        let bytes = (try? ImageCache.size(at: Paths.artDir)) ?? 0
+        artCacheSizeFormatted = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    /// True once artwork metadata has been ingested and the games can run.
+    var hasArtwork: Bool { artworkCount > 0 }
+
+    /// All artworks for building a game (loaded fresh; ~48k tiny rows).
+    func loadArtworks() -> [Artwork] {
+        (try? store?.loadArtworks()) ?? []
+    }
+
+    /// Ingests `unique_artwork` metadata (optionally all art_crops for offline) via the
+    /// fetcher, surfacing progress through `refreshState` like the other fetch flows.
+    func startArtworkIngest(downloadAll: Bool = false) {
+        guard case .idle = refreshState, !backgroundSyncing else { return }
+        refreshState = .running(phase: "artwork", done: 0, total: 0)
+        Task { [weak self] in
+            await self?.fetcher.run(mode: downloadAll ? .downloadAllArt : .ingestArtwork) { event in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    switch event.phase {
+                    case "done":
+                        self.refreshState = .idle
+                        self.refreshArtworkState()
+                    case "error":
+                        self.refreshState = .error(event.message ?? "unknown error")
+                    case "exit":
+                        if case .running = self.refreshState { self.refreshState = .idle }
+                        self.refreshArtworkState()
+                    default:
+                        self.refreshState = .running(phase: event.phase,
+                                                     done: event.done ?? 0,
+                                                     total: event.total ?? 0)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns bytes freed from the per-round art cache. Refreshes the published size.
+    @discardableResult
+    func clearArtCache() -> Int64 {
+        let freed = (try? ImageCache.clear(at: Paths.artDir)) ?? 0
+        refreshArtworkState()
         return freed
     }
 

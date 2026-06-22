@@ -7,13 +7,46 @@ struct FetcherMain {
         let args = CommandLine.arguments
         let imagesOnly = args.contains("--images-only")
         let skipImages = args.contains("--no-images")
+        let artwork = args.contains("--artwork")
+        let downloadArt = args.contains("--download-art")
 
         let emitter = ProgressEmitter(logURL: Paths.fetcherLogURL)
-        emitter.emit(phase: "start", message: "mtg-fetcher starting (imagesOnly=\(imagesOnly) skipImages=\(skipImages))")
+        emitter.emit(phase: "start", message: "mtg-fetcher starting (imagesOnly=\(imagesOnly) skipImages=\(skipImages) artwork=\(artwork) downloadArt=\(downloadArt))")
 
         do {
             let store = try CardStore()
             let client = ScryfallClient()
+
+            // Artwork pipeline: ingest unique_artwork metadata, optionally download all art_crops.
+            if artwork {
+                let artBulkURL = Paths.supportDir.appendingPathComponent("bulk-unique-artwork.json", isDirectory: false)
+                emitter.emit(phase: "json", message: "fetching unique_artwork bulk index")
+                let info = try await client.bulkInfo(type: "unique_artwork")
+                emitter.emit(phase: "json", message: "artwork bulk size \(info.size) updated_at \(info.updated_at)")
+                try await client.downloadBulkJSON(from: info, to: artBulkURL)
+                emitter.emit(phase: "json", message: "artwork bulk JSON downloaded")
+
+                let artworks = try client.parseArtworks(at: artBulkURL)
+                emitter.emit(phase: "artwork", done: 0, total: artworks.count)
+                var done = 0
+                for batch in artworks.chunked(into: 1000) {
+                    try store.upsertArtworks(batch)
+                    done += batch.count
+                    emitter.emit(phase: "artwork", done: done, total: artworks.count)
+                }
+                try store.setMeta("artwork_updated_at", info.updated_at)
+
+                if downloadArt {
+                    let refs = try client.extractArtRefs(at: artBulkURL)
+                    emitter.emit(phase: "images", done: 0, total: refs.count)
+                    let downloader = ArtImageDownloader(concurrency: 8)
+                    await downloader.download(refs: refs) { done, total in
+                        emitter.emit(phase: "images", done: done, total: total)
+                    }
+                }
+                emitter.emit(phase: "done", message: "artwork complete")
+                return
+            }
 
             let bulkURL = Paths.supportDir.appendingPathComponent("bulk-oracle.json", isDirectory: false)
 

@@ -134,6 +134,19 @@ private struct SettingsRow<Trailing: View>: View {
     }
 }
 
+/// A small grouped-settings section title.
+private struct SectionHeader: View {
+    let text: String
+    var body: some View {
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private struct Footnote: View {
     let text: String
     var body: some View {
@@ -208,6 +221,7 @@ struct SettingsView: View {
         .tint(DS.accent)
         .onAppear {
             model.refreshImageCacheSize()
+            model.refreshArtworkState()
             // Pick up changes made in System Settings while this window was closed.
             launchAtLogin = LoginItem.isEnabled
         }
@@ -377,6 +391,7 @@ struct SettingsView: View {
 
     private var databasePane: some View {
         VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(text: "Card Search")
             SettingsCard {
                 SettingsRow(symbol: "square.grid.2x2.fill", style: TileStyle(0x3E9BFF, 0x1E6FE0),
                             label: "Cards in database") {
@@ -411,6 +426,54 @@ struct SettingsView: View {
                         .disabled(model.refreshState != .idle)
                 }
             }
+            Footnote(text: "The card database and images power search and previews.")
+
+            SectionHeader(text: "Games")
+                .padding(.top, 18)
+            artworkSection
+        }
+    }
+
+    // MARK: Artwork & games
+
+    @ViewBuilder
+    private var artworkSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsCard {
+                SettingsRow(symbol: "photo.artframe", style: TileStyle(0x7A45B6, 0x5B45C2),
+                            label: "Artwork data", sub: "Powers the Play games") {
+                    Text(model.hasArtwork ? "\(model.artworkCount) arts" : "not downloaded")
+                        .font(.system(size: 14)).foregroundStyle(.secondary).monospacedDigit()
+                }
+                SettingsRow(symbol: "arrow.down.circle.fill", style: TileStyle(0x3E9BFF, 0x1E6FE0),
+                            label: "Download artwork data",
+                            sub: "Metadata only (~260 MB); art streams as you play") {
+                    Button(model.hasArtwork ? "Update" : "Download") {
+                        model.startArtworkIngest(downloadAll: false)
+                    }
+                    .controlSize(.small)
+                    .disabled(model.refreshState != .idle)
+                }
+                SettingsRow(symbol: "square.and.arrow.down.fill", style: TileStyle(0x34C759, 0x28A148),
+                            label: "Download all art for offline",
+                            sub: "~3.5 GB of illustrations") {
+                    Button("Download All") { model.startArtworkIngest(downloadAll: true) }
+                        .controlSize(.small)
+                        .disabled(model.refreshState != .idle)
+                }
+                SettingsRow(symbol: "internaldrive.fill", style: TileStyle(0xFF5E8A, 0xE0457A),
+                            label: "Art cache") {
+                    Text(model.artCacheSizeFormatted)
+                        .font(.system(size: 14)).foregroundStyle(.secondary)
+                }
+                SettingsRow(symbol: "trash.fill", style: TileStyle(0xFF453A, 0xD8362C, font: 13),
+                            label: "Clear cached art", last: true) {
+                    Button("Clear Art Cache…", role: .destructive) { confirmClearArtCache() }
+                        .controlSize(.small)
+                        .disabled(model.refreshState != .idle)
+                }
+            }
+            Footnote(text: "These illustrations power the Play games (Guess the Card / Guess the Artist). Courtesy of Scryfall.")
         }
     }
 
@@ -507,6 +570,21 @@ struct SettingsView: View {
         // First button = Cancel (.alertFirstButtonReturn), second = Clear.
         if response == .alertSecondButtonReturn {
             model.clearImageCache()
+        }
+    }
+
+    private func confirmClearArtCache() {
+        let alert = NSAlert()
+        alert.messageText = "Clear Art Cache?"
+        alert.informativeText = "This will delete \(model.artCacheSizeFormatted) of cached illustrations. Artwork metadata is preserved — art re-streams as you play."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Clear")
+        if alert.buttons.count >= 2 {
+            alert.buttons[1].hasDestructiveAction = true
+        }
+        if alert.runModal() == .alertSecondButtonReturn {
+            model.clearArtCache()
         }
     }
 
