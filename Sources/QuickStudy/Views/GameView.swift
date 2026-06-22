@@ -167,15 +167,19 @@ private struct HeroCard: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 20)
         .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.surface)
-                RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.accentGradient).opacity(0.28)
-                DS.accentBloom(opacity: 0.6, radius: 95)
-                    .frame(width: 230, height: 230)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .offset(x: 40, y: -44)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: DS.Radius.lg))
+            RoundedRectangle(cornerRadius: DS.Radius.lg)
+                .fill(DS.surface)
+                .overlay {
+                    RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.accentGradient).opacity(0.28)
+                }
+                // Bloom is anchored to (and clipped by) the card rectangle, so it
+                // can't bleed into the window behind the rest of the menu.
+                .overlay(alignment: .topTrailing) {
+                    DS.accentBloom(opacity: 0.6, radius: 95)
+                        .frame(width: 230, height: 230)
+                        .offset(x: 40, y: -44)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: DS.Radius.lg))
         }
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.lg).strokeBorder(DS.separator, lineWidth: 0.5)
