@@ -330,6 +330,22 @@ private struct FeedbackView: View {
             if let round = session.round {
                 Text(round.mode == .guessArtist ? round.artwork.cardName : "by \(round.artwork.artist)")
                     .font(.callout).foregroundStyle(.secondary)
+
+                HStack(spacing: 10) {
+                    if let url = ScryfallLink.card(round.artwork.cardName) {
+                        Button { NSWorkspace.shared.open(url) } label: {
+                            Label("View Card", systemImage: "safari")
+                        }
+                    }
+                    if let url = ScryfallLink.artist(round.artwork.artist) {
+                        Button { NSWorkspace.shared.open(url) } label: {
+                            Label("More by Artist", systemImage: "paintpalette")
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .padding(.top, 2)
             }
             Button(session.state.isOver ? "See Results" : "Next") {
                 session.next()
@@ -337,8 +353,23 @@ private struct FeedbackView: View {
             .buttonStyle(.brandProminent)
             .controlSize(.large)
             .keyboardShortcut(.defaultAction)
+            .padding(.top, 4)
         }
         .frame(maxWidth: 460)
+    }
+}
+
+/// Builds Scryfall web links from the data we already have (no extra ingest needed).
+private enum ScryfallLink {
+    /// The specific card by exact name.
+    static func card(_ name: String) -> URL? { url(query: "!\"\(name)\"") }
+    /// All cards illustrated by this artist — "study the artist".
+    static func artist(_ artist: String) -> URL? { url(query: "artist:\"\(artist)\"") }
+
+    private static func url(query: String) -> URL? {
+        var components = URLComponents(string: "https://scryfall.com/search")
+        components?.queryItems = [URLQueryItem(name: "q", value: query)]
+        return components?.url
     }
 }
 
