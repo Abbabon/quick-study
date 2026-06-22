@@ -86,10 +86,29 @@ enum DS {
                               startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
+    // MARK: Surfaces & lines (explicit design opacities for the game HUD)
+    /// Window backdrop (`--qs-window` #1C1C1E in dark).
+    static let window = Color(light: Color(hex: 0xF2F2F5), dark: Color(hex: 0x1C1C1E))
+    /// Cards / hero / pills (`--qs-surface` #2A2A2C in dark).
+    static let surface = Color(light: .white, dark: Color(hex: 0x2A2A2C))
+    /// Unselected icon-chip fill (`--qs-track`).
+    static let track = Color(light: .black.opacity(0.06), dark: .white.opacity(0.09))
+    /// Row hover (`--qs-hover`).
+    static let hover = Color(light: .black.opacity(0.05), dark: .white.opacity(0.07))
+    /// Hairline ring (`--qs-separator`).
+    static let separator = Color(light: .black.opacity(0.10), dark: .white.opacity(0.12))
+    /// Idle close button / cold streak (`--qs-text-tertiary`).
+    static let textTertiary = Color(light: .black.opacity(0.32), dark: .white.opacity(0.32))
+    /// Empty hearts (`--qs-text-quaternary`).
+    static let textQuaternary = Color(light: .black.opacity(0.14), dark: .white.opacity(0.14))
+
     // MARK: Status
     static let statusRed = Color(hex: 0xFF3B30)
     static let statusGreen = Color(hex: 0x34C759)
     static let statusOrange = Color(hex: 0xFF9500)
+    /// Art-panel status ring tints (translucent so the art shows through).
+    static let ringCorrect = Color(hex: 0x34C759).opacity(0.55)
+    static let ringWrong = Color(hex: 0xFF3B30).opacity(0.55)
 
     // MARK: Radii
     enum Radius {
@@ -105,6 +124,22 @@ enum DS {
     enum Motion {
         static let selectScroll = Animation.easeOut(duration: 0.08)
         static let resize = Animation.easeInOut(duration: 0.2)
+
+        /// `--ease-out` cubic-bezier(0.16, 0.84, 0.44, 1) at a given duration.
+        static func easeOut(_ duration: Double) -> Animation {
+            .timingCurve(0.16, 0.84, 0.44, 1, duration: duration)
+        }
+        static let fast = easeOut(0.12)   // --dur-fast: selection ring/halo/lift
+        static let base = easeOut(0.2)    // --dur-base: feedback icon, streak heat
+        static let slow = easeOut(0.35)   // --dur-slow: new-best pill pop
+    }
+
+    /// Soft violet radial bloom used in the hero corner and the window backdrop.
+    static func accentBloom(opacity: Double) -> RadialGradient {
+        RadialGradient(
+            colors: [accent.opacity(opacity), .clear],
+            center: .center, startRadius: 0, endRadius: 90
+        )
     }
 }
 

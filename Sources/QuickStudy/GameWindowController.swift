@@ -31,7 +31,7 @@ final class GameWindowController: NSObject, NSWindowDelegate {
             w.styleMask = [.titled, .closable, .miniaturizable]
             w.isReleasedWhenClosed = false
             w.delegate = self
-            w.setContentSize(NSSize(width: 600, height: 600))
+            w.setContentSize(NSSize(width: 600, height: 620))
             w.center()
             window = w
         }
