@@ -30,19 +30,11 @@ struct GameView: View {
     }
 }
 
-/// In-window backdrop: the solid `--qs-window` surface with a faint violet bloom at
-/// the top in dark mode (echoing the celebratory page gradient from the design).
+/// In-window backdrop: the solid `--qs-window` surface (per the design spec the
+/// in-window background is flat; only the hero card carries the violet wash/bloom).
 private struct GameBackground: View {
     var body: some View {
-        ZStack {
-            DS.window
-            RadialGradient(
-                colors: [Color(light: .clear, dark: Color(hex: 0x2A2540).opacity(0.6)), .clear],
-                center: .init(x: 0.5, y: -0.1),
-                startRadius: 0, endRadius: 460
-            )
-        }
-        .ignoresSafeArea()
+        DS.window.ignoresSafeArea()
     }
 }
 
@@ -175,15 +167,19 @@ private struct HeroCard: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 20)
         .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.surface)
-                RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.accentGradient).opacity(0.14)
-                DS.accentBloom(opacity: 0.45)
-                    .frame(width: 120, height: 120)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .offset(x: 18, y: -22)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: DS.Radius.lg))
+            RoundedRectangle(cornerRadius: DS.Radius.lg)
+                .fill(DS.surface)
+                .overlay {
+                    RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.accentGradient).opacity(0.28)
+                }
+                // Bloom is anchored to (and clipped by) the card rectangle, so it
+                // can't bleed into the window behind the rest of the menu.
+                .overlay(alignment: .topTrailing) {
+                    DS.accentBloom(opacity: 0.6, radius: 95)
+                        .frame(width: 230, height: 230)
+                        .offset(x: 40, y: -44)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: DS.Radius.lg))
         }
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.lg).strokeBorder(DS.separator, lineWidth: 0.5)
