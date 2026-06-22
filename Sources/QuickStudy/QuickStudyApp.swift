@@ -24,9 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: PanelController!
     private var statusItem: NSStatusItem!
     private lazy var settingsWindow = SettingsWindowController(model: model)
+    private lazy var gameWindow = GameWindowController(model: model)
     private let notifier = NotificationManager()
     private var updateMenuItem: NSMenuItem!
     private var appUpdateMenuItem: NSMenuItem!
+    private var openSearchMenuItem: NSMenuItem!
     private var checkTimer: Timer?
     private var wakeObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
@@ -38,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel = PanelController(model: model)
 
         model.onOpenSettings = { [weak self] in self?.settingsWindow.show() }
+        model.onOpenGame = { [weak self] in self?.gameWindow.show() }
 
         notifier.configure()
         notifier.onUpdateAction = { [weak self] in self?.model.startImageDownload() }
@@ -57,7 +60,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                        action: #selector(installAppUpdate), keyEquivalent: "")
         appUpdateMenuItem.isHidden = true
         menu.addItem(appUpdateMenuItem)
-        menu.addItem(withTitle: "Open Search", action: #selector(openSearch), keyEquivalent: "")
+        openSearchMenuItem = menu.addItem(withTitle: "Open Search", action: #selector(openSearch), keyEquivalent: "")
+        openSearchMenuItem.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Open Search")
+        let playItem = menu.addItem(withTitle: "Play…", action: #selector(openGame), keyEquivalent: "")
+        playItem.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: "Play")
         menu.addItem(.separator())
         let refreshItem = menu.addItem(withTitle: "Refresh Database…", action: #selector(refreshNow), keyEquivalent: "")
         refreshItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh Database")
@@ -65,12 +71,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Quick Study", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         for item in menu.items where item.action == #selector(openSearch)
+            || item.action == #selector(openGame)
             || item.action == #selector(refreshNow)
             || item.action == #selector(downloadNewImages)
             || item.action == #selector(openSettings)
             || item.action == #selector(installAppUpdate) {
             item.target = self
         }
+        menu.delegate = self
         statusItem.menu = menu
 
         KeyboardShortcuts.onKeyDown(for: .openSearch) { [weak self] in
@@ -190,5 +198,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         settingsWindow.show()
+    }
+
+    @objc private func openGame() {
+        gameWindow.show()
+    }
+}
+
+extension AppDelegate: NSMenuDelegate {
+    /// Reflect the current (user-configurable) global shortcut next to "Open Search"
+    /// each time the menu opens, so it stays correct after a rebind in Settings.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if let shortcut = KeyboardShortcuts.getShortcut(for: .openSearch),
+           let keyEquivalent = shortcut.nsMenuItemKeyEquivalent {
+            openSearchMenuItem.keyEquivalent = keyEquivalent
+            openSearchMenuItem.keyEquivalentModifierMask = shortcut.modifiers
+        } else {
+            openSearchMenuItem.keyEquivalent = ""
+            openSearchMenuItem.keyEquivalentModifierMask = []
+        }
     }
 }

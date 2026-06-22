@@ -64,6 +64,21 @@ public final class CardStore {
                          ELSE date_added END
                 """, arguments: [today, today])
         }
+        m.registerMigration("v4") { db in
+            // Distinct artworks for the game modes, from Scryfall's `unique_artwork`
+            // bulk set (one row per illustration_id). Populated only by the fetcher.
+            try db.create(table: "artworks") { t in
+                t.column("illustration_id", .text).primaryKey()
+                t.column("card_id", .text).notNull()
+                t.column("card_name", .text).notNull()
+                t.column("card_name_lower", .text).notNull()
+                t.column("artist", .text).notNull().indexed()  // indexed: distractor / DISTINCT sampling
+                t.column("artist_lower", .text).notNull()
+                t.column("art_crop_url", .text).notNull()
+                t.column("colors", .text).notNull().defaults(to: "[]")
+                t.column("set_code", .text)
+            }
+        }
         return m
     }
 
@@ -130,6 +145,42 @@ public final class CardStore {
         }
     }
 
+    public func artworkCount() throws -> Int {
+        try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM artworks") ?? 0
+        }
+    }
+
+    /// Loads all artworks into memory for the game engine (~48k tiny rows, like `loadMinis`).
+    public func loadArtworks() throws -> [Artwork] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT illustration_id, card_id, card_name, artist, art_crop_url, colors, set_code
+                FROM artworks
+                """)
+            let decoder = JSONDecoder()
+            return rows.map { row in
+                let colorsRaw: String = row["colors"] ?? "[]"
+                let colors = (try? decoder.decode([String].self, from: Data(colorsRaw.utf8))) ?? []
+                return Artwork(
+                    illustrationID: row["illustration_id"],
+                    cardID: row["card_id"],
+                    cardName: row["card_name"],
+                    artist: row["artist"],
+                    artCropURL: row["art_crop_url"],
+                    colors: colors,
+                    setCode: row["set_code"]
+                )
+            }
+        }
+    }
+
+    public func distinctArtists() throws -> [String] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT DISTINCT artist FROM artworks ORDER BY artist")
+        }
+    }
+
     // MARK: - Writes (fetcher only)
 
     public func upsert(_ cards: [Card]) throws {
@@ -187,6 +238,30 @@ public final class CardStore {
     public func setMeta(_ key: String, _ value: String) throws {
         try dbQueue.write { db in
             try db.execute(sql: "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", arguments: [key, value])
+        }
+    }
+
+    public func upsertArtworks(_ artworks: [Artwork]) throws {
+        try dbQueue.write { db in
+            for a in artworks {
+                let colorsJSON = (try? String(data: JSONEncoder().encode(a.colors), encoding: .utf8)) ?? "[]"
+                try db.execute(sql: """
+                    INSERT INTO artworks (illustration_id, card_id, card_name, card_name_lower, artist, artist_lower, art_crop_url, colors, set_code)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(illustration_id) DO UPDATE SET
+                        card_id = excluded.card_id,
+                        card_name = excluded.card_name,
+                        card_name_lower = excluded.card_name_lower,
+                        artist = excluded.artist,
+                        artist_lower = excluded.artist_lower,
+                        art_crop_url = excluded.art_crop_url,
+                        colors = excluded.colors,
+                        set_code = excluded.set_code
+                """, arguments: [
+                    a.illustrationID, a.cardID, a.cardName, a.cardName.lowercased(),
+                    a.artist, a.artist.lowercased(), a.artCropURL, colorsJSON, a.setCode,
+                ])
+            }
         }
     }
 

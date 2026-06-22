@@ -41,6 +41,98 @@ public final class ScryfallClient {
         let raws = try JSONDecoder().decode([ScryfallCard].self, from: data)
         return raws.compactMap { $0.toCard() }
     }
+
+    /// Decode the `unique_artwork` bulk JSON into `Artwork` records. Each card object can
+    /// yield multiple arts (double-faced cards carry one illustration per face), so we
+    /// flatten them; the DB upsert dedups by `illustration_id`.
+    public func parseArtworks(at url: URL) throws -> [Artwork] {
+        let data = try Data(contentsOf: url)
+        let raws = try JSONDecoder().decode([ScryfallArtwork].self, from: data)
+        return raws.flatMap { $0.toArtworks() }
+    }
+}
+
+// MARK: - Scryfall raw JSON shape (unique_artwork)
+
+/// Minimal projection of a Scryfall card object as it appears in the `unique_artwork`
+/// bulk file — only the fields the art games need.
+private struct ScryfallArtwork: Decodable {
+    let id: String
+    let name: String
+    let artist: String?
+    let illustration_id: String?
+    let image_uris: ArtImageURIs?
+    let card_faces: [Face]?
+    let colors: [String]?
+    let color_identity: [String]?
+    let layout: String?
+    let set: String?
+
+    struct ArtImageURIs: Decodable {
+        let art_crop: String?
+    }
+
+    struct Face: Decodable {
+        let name: String?
+        let artist: String?
+        let illustration_id: String?
+        let image_uris: ArtImageURIs?
+        let colors: [String]?
+    }
+
+    func toArtworks() -> [Artwork] {
+        // Skip the same junk layouts as the card ingest.
+        if let l = layout, ["token", "double_faced_token", "art_series", "emblem"].contains(l) {
+            return []
+        }
+        let fallbackColors = colors ?? color_identity ?? []
+        var result: [Artwork] = []
+
+        func make(illustrationID: String?, artCrop: String?, artist: String?, name: String?, colors: [String]?) {
+            guard let illustrationID, let artCrop, let artist else { return }
+            result.append(Artwork(
+                illustrationID: illustrationID,
+                cardID: id,
+                cardName: name ?? self.name,
+                artist: artist,
+                artCropURL: artCrop,
+                colors: colors ?? fallbackColors,
+                setCode: set?.uppercased()
+            ))
+        }
+
+        // Single-faced (or cards that expose art at the top level).
+        make(illustrationID: illustration_id, artCrop: image_uris?.art_crop,
+             artist: artist, name: name, colors: fallbackColors)
+
+        // Double-faced cards: one distinct illustration per face.
+        for face in card_faces ?? [] {
+            make(illustrationID: face.illustration_id, artCrop: face.image_uris?.art_crop,
+                 artist: face.artist ?? artist, name: face.name, colors: face.colors)
+        }
+        return result
+    }
+}
+
+/// A pair of (illustration-id, art_crop-url) for the optional bulk art download.
+public struct ArtImageRef: Sendable {
+    public let illustrationID: String
+    public let imageURL: String
+
+    public init(illustrationID: String, imageURL: String) {
+        self.illustrationID = illustrationID
+        self.imageURL = imageURL
+    }
+}
+
+public extension ScryfallClient {
+    /// Extract (illustration_id, art_crop) pairs for the optional "download all art" pass.
+    /// Reuses `parseArtworks` so the same flattening/skip rules apply.
+    func extractArtRefs(at url: URL) throws -> [ArtImageRef] {
+        try parseArtworks(at: url).map {
+            ArtImageRef(illustrationID: $0.illustrationID, imageURL: $0.artCropURL)
+        }
+    }
 }
 
 // MARK: - Scryfall raw JSON shape

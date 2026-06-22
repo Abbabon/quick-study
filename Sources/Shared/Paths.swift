@@ -24,6 +24,16 @@ public enum Paths {
         return dir
     }
 
+    /// Per-round `art_crop` cache, written by the app (single-image streaming) AND the
+    /// optional bulk "download all art" fetcher pass. Kept separate from `imagesDir` so
+    /// the bulk card-image set keeps a single writer (the fetcher) and the app only ever
+    /// touches `art/`. Presence on disk is the only state — never recorded in the DB.
+    public static var artDir: URL {
+        let dir = supportDir.appendingPathComponent("art", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     public static var databaseURL: URL {
         supportDir.appendingPathComponent("cards.sqlite", isDirectory: false)
     }
@@ -46,5 +56,9 @@ public enum Paths {
 
     public static func imageURL(forCardID id: String) -> URL {
         imagesDir.appendingPathComponent("\(id).jpg", isDirectory: false)
+    }
+
+    public static func artURL(forIllustrationID id: String) -> URL {
+        artDir.appendingPathComponent("\(id).jpg", isDirectory: false)
     }
 }

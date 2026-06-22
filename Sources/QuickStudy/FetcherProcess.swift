@@ -33,12 +33,16 @@ final class FetcherProcess {
         case full          // json → ingest → images
         case ingestOnly    // json → ingest (no images)
         case imagesOnly    // reuse bulk JSON → images only
+        case ingestArtwork // unique_artwork → artwork metadata (no images)
+        case downloadAllArt // unique_artwork → metadata + all art_crops
 
         var arguments: [String] {
             switch self {
             case .full: return []
             case .ingestOnly: return ["--no-images"]
             case .imagesOnly: return ["--images-only"]
+            case .ingestArtwork: return ["--artwork"]
+            case .downloadAllArt: return ["--artwork", "--download-art"]
             }
         }
     }
