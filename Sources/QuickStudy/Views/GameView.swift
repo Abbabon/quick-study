@@ -179,9 +179,9 @@ private struct HeroCard: View {
                 RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.surface)
                 RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.accentGradient).opacity(0.14)
                 DS.accentBloom(opacity: 0.45)
-                    .frame(width: 120, height: 120)
+                    .frame(width: 180, height: 180)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .offset(x: 18, y: -22)
+                    .offset(x: 30, y: -34)
             }
             .clipShape(RoundedRectangle(cornerRadius: DS.Radius.lg))
         }

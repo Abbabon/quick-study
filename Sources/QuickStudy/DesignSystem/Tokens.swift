@@ -134,11 +134,13 @@ enum DS {
         static let slow = easeOut(0.35)   // --dur-slow: new-best pill pop
     }
 
-    /// Soft violet radial bloom used in the hero corner and the window backdrop.
-    static func accentBloom(opacity: Double) -> RadialGradient {
+    /// Soft violet radial bloom used in the hero corner. `endRadius` is kept well
+    /// under half the host frame so the gradient fades fully to clear before the
+    /// frame edge (otherwise it gets clipped into a hard square).
+    static func accentBloom(opacity: Double, radius: CGFloat = 70) -> RadialGradient {
         RadialGradient(
             colors: [accent.opacity(opacity), .clear],
-            center: .center, startRadius: 0, endRadius: 90
+            center: .center, startRadius: 0, endRadius: radius
         )
     }
 }
