@@ -30,19 +30,11 @@ struct GameView: View {
     }
 }
 
-/// In-window backdrop: the solid `--qs-window` surface with a faint violet bloom at
-/// the top in dark mode (echoing the celebratory page gradient from the design).
+/// In-window backdrop: the solid `--qs-window` surface (per the design spec the
+/// in-window background is flat; only the hero card carries the violet wash/bloom).
 private struct GameBackground: View {
     var body: some View {
-        ZStack {
-            DS.window
-            RadialGradient(
-                colors: [Color(light: .clear, dark: Color(hex: 0x2A2540).opacity(0.6)), .clear],
-                center: .init(x: 0.5, y: -0.1),
-                startRadius: 0, endRadius: 460
-            )
-        }
-        .ignoresSafeArea()
+        DS.window.ignoresSafeArea()
     }
 }
 
