@@ -10,6 +10,9 @@ final class AppModel: ObservableObject {
     @Published var results: [Card.Mini] = []
     @Published var selectedID: String?
     @Published var selectedCard: Card?
+    /// Printings of the selected card, for the preview's Printings list. Loaded lazily on
+    /// selection from `CardStore.printings(forOracleID:)`.
+    @Published var selectedPrintings: [Card.Printing] = []
     @Published var pinned: [Card.Mini] = []
     /// User-curated lists (durable, SQLite-backed). `activeListID` is the "current" list
     /// for add-to-current and the one whose cards are shown expanded in the column.
@@ -146,7 +149,7 @@ final class AppModel: ObservableObject {
                 dbState = .empty
             } else {
                 dbState = .ready
-                engine.load(try store.loadMinis())
+                engine.load(try store.loadMinis(), sets: (try? store.loadSetIndex()) ?? [])
                 recentlyAdded = (try? store.recentlyAdded()) ?? []
                 reloadLists()
             }
@@ -166,6 +169,7 @@ final class AppModel: ObservableObject {
             if selectedRecent == nil {
                 selectedID = nil
                 selectedCard = nil
+                selectedPrintings = []
             }
             return
         }
@@ -177,6 +181,14 @@ final class AppModel: ObservableObject {
             selectedID = nil
             selectedCard = nil
         }
+    }
+
+    /// Fills the search field with a set's name and runs the search, so clicking a printing
+    /// jumps to "everything in that set". The set index makes the set-name query expand to
+    /// all member cards.
+    func searchSet(_ name: String) {
+        query = name
+        runSearch()
     }
 
     /// Clears all transient search UI state so the next show is a fresh session.
@@ -191,6 +203,7 @@ final class AppModel: ObservableObject {
         selectedID = nil
         selectedCard = nil
         selectedRecent = nil
+        selectedPrintings = []
     }
 
     /// Opens a card from the Recently Added column: selects it, records it for the
@@ -206,13 +219,22 @@ final class AppModel: ObservableObject {
         selectedID = id
         if let cached = detailCache.object(forKey: id as NSString) {
             selectedCard = cached.card
+            loadPrintings(for: cached.card)
             return
         }
         guard let store = store else { return }
         if let card = try? store.card(id: id) {
             selectedCard = card
             detailCache.setObject(CachedCard(card), forKey: id as NSString)
+            loadPrintings(for: card)
         }
+    }
+
+    /// Loads the selected card's printings (empty if it has no `oracleID`, e.g. ingested
+    /// before printings existed or before the first --printings refresh).
+    private func loadPrintings(for card: Card) {
+        guard let store = store, let oid = card.oracleID else { selectedPrintings = []; return }
+        selectedPrintings = (try? store.printings(forOracleID: oid)) ?? []
     }
 
     func selectNext() {
@@ -693,7 +715,7 @@ final class AppModel: ObservableObject {
         guard case .idle = refreshState, !backgroundSyncing else { return }
         refreshState = .running(phase: "starting", done: 0, total: 0)
         Task { [weak self] in
-            await self?.fetcher.run(mode: skipImages ? .ingestOnly : .full) { event in
+            await self?.fetcher.run(mode: skipImages ? .ingestPrintings : .full) { event in
                 Task { @MainActor [weak self] in
                     self?.applyFetcherEvent(event)
                 }
