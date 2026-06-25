@@ -41,6 +41,10 @@ struct SearchPanel: View {
         .animation(reduceMotion ? nil : DS.Motion.resize, value: model.listsColumnVisible)
         .tint(DS.accent)
         .onAppear { searchFocused = true }
+        // The panel's hosting view is reused across show/hide, so `onAppear` fires only once.
+        // Re-focus whenever the panel re-shows or a card is picked so the search field stays
+        // highlighted and ↑↓ keep navigating the results.
+        .onChange(of: model.searchFocusToken) { searchFocused = true }
         .onExitCommand(perform: onDismiss)
     }
 

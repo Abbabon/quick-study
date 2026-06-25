@@ -107,6 +107,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         // makes it the last (and therefore key) window.
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        // The hosting view is reused, so SwiftUI's `onAppear` won't re-fire — ask the search
+        // field to retake focus now that the panel is key.
+        model.focusSearchField()
     }
 
     func hide() {
@@ -176,6 +179,14 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     // MARK: - NSWindowDelegate
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        // On a cold launch the SwiftUI view's `@FocusState` binding isn't wired into the
+        // responder chain yet when `show()` runs, so that first focus request is dropped.
+        // Re-request once the panel is actually key (deferred a tick to let SwiftUI install
+        // the binding) so the search field is highlighted even on the very first open.
+        DispatchQueue.main.async { [weak self] in self?.model.focusSearchField() }
+    }
 
     func windowDidResignKey(_ notification: Notification) {
         // Stay open while a floating companion window (Settings) is up, so the two hover

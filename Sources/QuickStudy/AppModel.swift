@@ -7,6 +7,10 @@ import Shared
 @MainActor
 final class AppModel: ObservableObject {
     @Published var query: String = ""
+    /// Bumped to request that the search field (re)take keyboard focus. The panel is reused
+    /// across show/hide, so `onAppear` only fires once — observing this token lets the view
+    /// re-focus on every show and after a card is picked, keeping ↑↓ navigation alive.
+    @Published var searchFocusToken: Int = 0
     @Published var results: [Card.Mini] = []
     /// Total cards matching the current query *before* the display limit — `results.count`
     /// is what's shown, `totalMatchCount` is how many exist.
@@ -222,6 +226,11 @@ final class AppModel: ObservableObject {
         selectedID = nil
         selectedCard = nil
         results = []
+    }
+
+    /// Requests that the search field take keyboard focus on the next runloop tick.
+    func focusSearchField() {
+        searchFocusToken &+= 1
     }
 
     func deselect() {
