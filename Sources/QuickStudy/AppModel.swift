@@ -65,6 +65,9 @@ final class AppModel: ObservableObject {
     let fetcher = FetcherProcess()
     private var store: CardStore?
     private let detailCache = NSCache<NSString, CachedCard>()
+    /// Coalesces deferred detail loads. Each `select` cancels the prior task so a burst of
+    /// keystrokes (each changing the top result) hits SQLite at most once, after typing pauses.
+    private var detailLoadTask: Task<Void, Never>?
 
     /// Invoked (on the main actor) whenever the pinned set changes, so the panel
     /// can resize to fit/free the pinned row without compromising the preview.
@@ -132,7 +135,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private final class CachedCard { let card: Card; init(_ c: Card) { self.card = c } }
+    private final class CachedCard {
+        let card: Card
+        let printings: [Card.Printing]
+        init(_ c: Card, printings: [Card.Printing]) { self.card = c; self.printings = printings }
+    }
 
     /// Cards added within this many days get the accent "new" treatment.
     static let newWindowDays = 7
@@ -235,24 +242,34 @@ final class AppModel: ObservableObject {
 
     func select(_ id: String) {
         selectedID = id
+        // Cached detail is in-memory and cheap — apply synchronously so the preview tracks fast.
         if let cached = detailCache.object(forKey: id as NSString) {
+            detailLoadTask?.cancel()
+            detailLoadTask = nil
             selectedCard = cached.card
-            loadPrintings(for: cached.card)
+            selectedPrintings = cached.printings
             return
         }
-        guard let store = store else { return }
-        if let card = try? store.card(id: id) {
-            selectedCard = card
-            detailCache.setObject(CachedCard(card), forKey: id as NSString)
-            loadPrintings(for: card)
+        // Uncached: defer the SQLite reads off the keystroke path. While typing fast the top
+        // result changes every keystroke; coalescing means the DB is read only once typing pauses.
+        detailLoadTask?.cancel()
+        detailLoadTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled, let self, self.selectedID == id,
+                  let store = self.store, let card = try? store.card(id: id) else { return }
+            let printings = Self.printings(for: card, store: store)
+            guard self.selectedID == id else { return }   // selection moved on while reading
+            self.detailCache.setObject(CachedCard(card, printings: printings), forKey: id as NSString)
+            self.selectedCard = card
+            self.selectedPrintings = printings
         }
     }
 
-    /// Loads the selected card's printings (empty if it has no `oracleID`, e.g. ingested
-    /// before printings existed or before the first --printings refresh).
-    private func loadPrintings(for card: Card) {
-        guard let store = store, let oid = card.oracleID else { selectedPrintings = []; return }
-        selectedPrintings = (try? store.printings(forOracleID: oid)) ?? []
+    /// Loads a card's printings (empty if it has no `oracleID`, e.g. ingested before printings
+    /// existed or before the first --printings refresh).
+    private static func printings(for card: Card, store: CardStore) -> [Card.Printing] {
+        guard let oid = card.oracleID else { return [] }
+        return (try? store.printings(forOracleID: oid)) ?? []
     }
 
     func selectNext() {
