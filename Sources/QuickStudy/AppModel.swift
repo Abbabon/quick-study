@@ -25,8 +25,13 @@ final class AppModel: ObservableObject {
     /// clears it once it has taken focus.
     @Published var renamingListID: String?
     @Published var recentlyAdded: [Card.Recent] = []
-    /// Session UI state for the Recently Added column (not persisted).
-    @Published var recentlyAddedExpanded: Bool = true
+    /// Open/closed state for the Recently Added column, persisted across launches.
+    /// Defaults to expanded for first-time users (no stored value yet).
+    @Published var recentlyAddedExpanded: Bool =
+        UserDefaults.standard.object(forKey: "showRecentlyAddedColumn") as? Bool ?? true
+    {
+        didSet { UserDefaults.standard.set(recentlyAddedExpanded, forKey: "showRecentlyAddedColumn") }
+    }
     /// The recent card currently shown via the column, driving the preview meta strip.
     @Published var selectedRecent: Card.Recent?
     @Published var refreshState: RefreshState = .idle
