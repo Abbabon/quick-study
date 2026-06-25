@@ -6,6 +6,12 @@ struct CardPreview: View {
     let card: Card?
     var isPinned: Bool = false
     var onTogglePin: () -> Void = {}
+    /// Existing lists offered in the "Add to list" menu.
+    var lists: [CardList] = []
+    /// Adds the previewed card to an existing list (by id).
+    var onAddToList: (String) -> Void = { _ in }
+    /// Adds the previewed card to a freshly-created list.
+    var onAddToNewList: () -> Void = {}
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
     var body: some View {
@@ -67,6 +73,7 @@ struct CardPreview: View {
                         ManaCostView(cost: cost, size: scale.size(16))
                     }
                     Spacer(minLength: scale.pad(8))
+                    addToListMenu(scale: scale)
                     pinButton(scale: scale)
                 }
             }
@@ -78,7 +85,26 @@ struct CardPreview: View {
         if let cost = card.manaCost, !cost.isEmpty {
             ManaCostView(cost: cost, size: scale.size(16))
         }
+        addToListMenu(scale: scale)
         pinButton(scale: scale)
+    }
+
+    private func addToListMenu(scale: UIScale) -> some View {
+        Menu {
+            ForEach(lists) { list in
+                Button("Add to \(list.name)") { onAddToList(list.id) }
+            }
+            if !lists.isEmpty { Divider() }
+            Button("New list…") { onAddToNewList() }
+        } label: {
+            Image(systemName: "text.badge.plus")
+                .font(scale.font(14, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Add to list")
     }
 
     private func pinButton(scale: UIScale) -> some View {

@@ -79,6 +79,25 @@ public final class CardStore {
                 t.column("set_code", .text)
             }
         }
+        m.registerMigration("v5") { db in
+            // User-curated card collections. `card_lists` is the named list; membership
+            // lives in `card_list_items` (many-to-many, ordered by `position`). Populated
+            // and edited only by the app — the fetcher never touches these.
+            try db.create(table: "card_lists") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("name_lower", .text).notNull()
+                t.column("created_at", .text).notNull()
+                t.column("updated_at", .text).notNull()
+            }
+            try db.create(table: "card_list_items") { t in
+                t.column("list_id", .text).notNull().indexed()
+                t.column("card_id", .text).notNull()
+                t.column("position", .integer).notNull()
+                t.column("added_at", .text).notNull()
+                t.primaryKey(["list_id", "card_id"])
+            }
+        }
         return m
     }
 
@@ -272,7 +291,133 @@ public final class CardStore {
         }
     }
 
+    // MARK: - Lists
+
+    /// Creates an empty list and returns it. `name` is stored as-is; `name_lower` backs
+    /// case-insensitive lookups/sorting later if needed.
+    public func createList(name: String) throws -> CardList {
+        let id = UUID().uuidString
+        let now = Self.timestamp()
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT INTO card_lists (id, name, name_lower, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """, arguments: [id, name, name.lowercased(), now, now])
+        }
+        return CardList(id: id, name: name, createdAt: now, updatedAt: now, itemCount: 0)
+    }
+
+    /// All lists, oldest first, each with its current card count.
+    public func loadLists() throws -> [CardList] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT l.id, l.name, l.created_at, l.updated_at,
+                       (SELECT COUNT(*) FROM card_list_items i WHERE i.list_id = l.id) AS item_count
+                FROM card_lists l
+                ORDER BY l.created_at ASC, l.name ASC
+                """)
+            return rows.map { row in
+                CardList(id: row["id"], name: row["name"],
+                         createdAt: row["created_at"], updatedAt: row["updated_at"],
+                         itemCount: row["item_count"] ?? 0)
+            }
+        }
+    }
+
+    public func renameList(id: String, name: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                UPDATE card_lists SET name = ?, name_lower = ?, updated_at = ? WHERE id = ?
+                """, arguments: [name, name.lowercased(), Self.timestamp(), id])
+        }
+    }
+
+    /// Deletes a list and all its membership rows in one transaction (cascade-in-code,
+    /// since `PRAGMA foreign_keys` is left off globally).
+    public func deleteList(id: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM card_list_items WHERE list_id = ?", arguments: [id])
+            try db.execute(sql: "DELETE FROM card_lists WHERE id = ?", arguments: [id])
+        }
+    }
+
+    /// Appends a card to a list. No-op if the card is already a member (the composite
+    /// primary key makes the insert idempotent). Bumps the list's `updated_at`.
+    public func addCard(cardID: String, toList listID: String) throws {
+        try dbQueue.write { db in
+            let nextPosition = try Int.fetchOne(db,
+                sql: "SELECT COALESCE(MAX(position), -1) + 1 FROM card_list_items WHERE list_id = ?",
+                arguments: [listID]) ?? 0
+            try db.execute(sql: """
+                INSERT INTO card_list_items (list_id, card_id, position, added_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(list_id, card_id) DO NOTHING
+                """, arguments: [listID, cardID, nextPosition, Self.timestamp()])
+            try db.execute(sql: "UPDATE card_lists SET updated_at = ? WHERE id = ?",
+                           arguments: [Self.timestamp(), listID])
+        }
+    }
+
+    public func removeCard(cardID: String, fromList listID: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM card_list_items WHERE list_id = ? AND card_id = ?",
+                           arguments: [listID, cardID])
+            try db.execute(sql: "UPDATE card_lists SET updated_at = ? WHERE id = ?",
+                           arguments: [Self.timestamp(), listID])
+        }
+    }
+
+    /// Cards in a list as `Card.Mini`s, ordered by `position`. Joins `cards` so identity /
+    /// set metadata is populated exactly like `loadMinis()`. Items whose card is missing
+    /// from `cards` (e.g. removed in a later bulk) are skipped.
+    public func listItems(listID: String) throws -> [Card.Mini] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT c.id, c.name, c.colors, c.set_code, c.set_name
+                FROM card_list_items i
+                JOIN cards c ON c.id = i.card_id
+                WHERE i.list_id = ?
+                ORDER BY i.position ASC
+                """, arguments: [listID])
+            let decoder = JSONDecoder()
+            return rows.map { row in
+                let colorsRaw: String = row["colors"] ?? "[]"
+                let colors = (try? decoder.decode([String].self, from: Data(colorsRaw.utf8))) ?? []
+                return Card.Mini(id: row["id"], name: row["name"], colors: colors,
+                                 setCode: row["set_code"], setName: row["set_name"])
+            }
+        }
+    }
+
+    /// Rewrites positions to match `orderedCardIDs` (e.g. after a drag-reorder). IDs not
+    /// already in the list are ignored.
+    public func setListOrder(listID: String, orderedCardIDs: [String]) throws {
+        try dbQueue.write { db in
+            for (index, cardID) in orderedCardIDs.enumerated() {
+                try db.execute(sql: """
+                    UPDATE card_list_items SET position = ? WHERE list_id = ? AND card_id = ?
+                    """, arguments: [index, listID, cardID])
+            }
+            try db.execute(sql: "UPDATE card_lists SET updated_at = ? WHERE id = ?",
+                           arguments: [Self.timestamp(), listID])
+        }
+    }
+
     // MARK: - Helpers
+
+    /// UTC second-granularity timestamp for list created/updated stamps.
+    private static let timestampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
+
+    static func timestamp(_ date: Date = Date()) -> String {
+        timestampFormatter.string(from: date)
+    }
 
     /// UTC, day-granularity formatter matching the stored `date_added` ("YYYY-MM-DD").
     private static let dayFormatter: DateFormatter = {
