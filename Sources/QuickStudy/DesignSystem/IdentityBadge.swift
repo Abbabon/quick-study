@@ -12,7 +12,7 @@ struct IdentityBadge: View {
     var body: some View {
         Text(label)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(DS.manaInk)
+            .foregroundStyle(DS.manaInk(for: identity))
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
             .background(Capsule().fill(DS.tint(for: identity)))

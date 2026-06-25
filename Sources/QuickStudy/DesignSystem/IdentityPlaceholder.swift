@@ -14,7 +14,7 @@ struct IdentityPlaceholder: View {
                 if let symbol {
                     Image(systemName: symbol)
                         .font(.title)
-                        .foregroundStyle(DS.manaInk.opacity(0.45))
+                        .foregroundStyle(DS.manaInk(for: identity).opacity(0.45))
                 }
             }
             .dsHairlineRing(cornerRadius: cornerRadius)
