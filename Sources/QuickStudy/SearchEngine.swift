@@ -28,22 +28,49 @@ public final class SearchEngine {
     public private(set) var minis: [Card.Mini] = []
     private var setGroups: [Card.SetGroup] = []
     private var minisByID: [String: Card.Mini] = [:]
+    /// Per-card metadata for inline filters, keyed by card id. Empty until loaded — when a
+    /// card has no entry, positive filters fail (the card is treated as having no metadata).
+    private var filterFields: [String: Card.FilterFields] = [:]
+    /// Lowercased set code -> member card ids, derived from `setGroups`, for the `s:` filter.
+    private var setMembersByCode: [String: Set<String>] = [:]
 
-    public init(minis: [Card.Mini] = [], sets: [Card.SetGroup] = []) {
-        load(minis, sets: sets)
+    public init(minis: [Card.Mini] = [], sets: [Card.SetGroup] = [],
+                filterFields: [String: Card.FilterFields] = [:]) {
+        load(minis, sets: sets, filterFields: filterFields)
     }
 
-    public func load(_ minis: [Card.Mini], sets: [Card.SetGroup] = []) {
+    public func load(_ minis: [Card.Mini], sets: [Card.SetGroup] = [],
+                     filterFields: [String: Card.FilterFields] = [:]) {
         self.minis = minis
         self.setGroups = sets
+        self.filterFields = filterFields
         self.minisByID = Dictionary(minis.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        self.setMembersByCode = Dictionary(
+            sets.map { ($0.code.lowercased(), Set($0.memberIDs)) },
+            uniquingKeysWith: { a, b in a.union(b) })
     }
 
-    /// Returns up to `limit` cards ranked best-first. A card scores by the best of its name
-    /// match and any set (code/name) match that includes it.
+    /// Legacy entry point: a single free-text query with no inline filters.
     public func search(_ query: String, limit: Int = 20) -> [Card.Mini] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return [] }
+        search(name: query, filters: [], limit: limit)
+    }
+
+    /// Returns up to `limit` cards ranked best-first, narrowed by any inline `filters`.
+    /// A card scores by the best of its name match and any set (code/name) match that
+    /// includes it; filters are applied to the candidate set *before* the limit so they
+    /// can't be hidden by ranking. With a name present, ranking drives the order; with an
+    /// empty name but filters present, all matching cards are returned, shortest-name first.
+    public func search(name: String, filters: [Filter], limit: Int = 20) -> [Card.Mini] {
+        let q = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty {
+            guard !filters.isEmpty else { return [] }
+            let matched = minis.filter { passes(filters, $0) }
+            return matched.sorted { a, b in
+                let la = Self.lengthBonus(a.nameLower), lb = Self.lengthBonus(b.nameLower)
+                if la != lb { return la > lb }
+                return a.nameLower < b.nameLower
+            }.prefix(limit).map { $0 }
+        }
 
         var bestByID: [String: Int] = [:]
 
@@ -72,9 +99,118 @@ public final class SearchEngine {
 
         let scored = bestByID.compactMap { (id, score) -> (Int, Card.Mini)? in
             guard let m = minisByID[id] else { return nil }
+            if !filters.isEmpty && !passes(filters, m) { return nil }
             return (score, m)
         }
         return scored.sorted { $0.0 > $1.0 }.prefix(limit).map { $0.1 }
+    }
+
+    // MARK: - Inline filters
+
+    /// True if `mini` satisfies every filter (each filter ANDs with the rest).
+    private func passes(_ filters: [Filter], _ mini: Card.Mini) -> Bool {
+        let fields = filterFields[mini.id]
+        return filters.allSatisfy { matches($0, mini, fields) }
+    }
+
+    private func matches(_ filter: Filter, _ mini: Card.Mini, _ fields: Card.FilterFields?) -> Bool {
+        let raw: Bool
+        switch filter.field {
+        case .rarity:
+            raw = matchesRarity(filter, fields?.rarities ?? [])
+        case .color:
+            raw = matchesColor(filter, fields?.colors ?? [])
+        case .type:
+            raw = (fields?.typeLineLower?.contains(filter.value)) ?? false
+        case .oracle:
+            raw = (fields?.oracleTextLower?.contains(filter.value)) ?? false
+        case .manaValue:
+            raw = matchesManaValue(filter, fields?.cmc)
+        case .set:
+            raw = (mini.setCodeLower == filter.value)
+                || (setMembersByCode[filter.value]?.contains(mini.id) ?? false)
+        }
+        return filter.negated ? !raw : raw
+    }
+
+    /// Rarity tiers, low to high, for `r>=rare`-style comparisons. Rarities outside this
+    /// ladder (e.g. "special", "bonus") only ever match an exact `r:` query.
+    private static let rarityRank: [String: Int] = [
+        "common": 0, "uncommon": 1, "rare": 2, "mythic": 3,
+    ]
+
+    /// Canonicalizes a rarity filter value, accepting Scryfall's single-letter abbreviations.
+    private static func canonRarity(_ v: String) -> String {
+        switch v {
+        case "c": return "common"
+        case "u": return "uncommon"
+        case "r": return "rare"
+        case "m", "mythic rare": return "mythic"
+        default: return v
+        }
+    }
+
+    private func matchesRarity(_ filter: Filter, _ rarities: Set<String>) -> Bool {
+        let target = Self.canonRarity(filter.value)
+        guard filter.op != .eq, let tr = Self.rarityRank[target] else {
+            // Exact match (`:`/`=`) or an off-ladder rarity: simple membership.
+            return rarities.contains(target)
+        }
+        return rarities.contains { r in
+            guard let rank = Self.rarityRank[r] else { return false }
+            switch filter.op {
+            case .gt: return rank > tr
+            case .ge: return rank >= tr
+            case .lt: return rank < tr
+            case .le: return rank <= tr
+            case .eq: return rank == tr
+            }
+        }
+    }
+
+    /// `c:r` / `c:wu` / `c:colorless`. A card matches when its colors are a superset of the
+    /// requested colors (Scryfall's "at least these colors"); `c`/`colorless` means no colors.
+    private func matchesColor(_ filter: Filter, _ cardColors: [String]) -> Bool {
+        let have = Set(cardColors.map { $0.uppercased() })
+        let want = Self.colorSet(filter.value)
+        if want.isEmpty { return have.isEmpty }   // colorless request
+        return want.isSubset(of: have)
+    }
+
+    private static func colorSet(_ v: String) -> Set<String> {
+        switch v {
+        case "white": return ["W"]
+        case "blue": return ["U"]
+        case "black": return ["B"]
+        case "red": return ["R"]
+        case "green": return ["G"]
+        case "colorless": return []
+        default: break
+        }
+        var s: Set<String> = []
+        for ch in v {
+            switch ch {
+            case "w": s.insert("W")
+            case "u": s.insert("U")
+            case "b": s.insert("B")
+            case "r": s.insert("R")
+            case "g": s.insert("G")
+            case "c": return []   // colorless
+            default: break
+            }
+        }
+        return s
+    }
+
+    private func matchesManaValue(_ filter: Filter, _ cmc: Double?) -> Bool {
+        guard let cmc, let target = Double(filter.value) else { return false }
+        switch filter.op {
+        case .eq: return cmc == target
+        case .gt: return cmc > target
+        case .ge: return cmc >= target
+        case .lt: return cmc < target
+        case .le: return cmc <= target
+        }
     }
 
     /// Pure name scoring. `nil` means no match.

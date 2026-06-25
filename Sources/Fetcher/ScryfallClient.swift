@@ -155,6 +155,8 @@ private struct ScryfallCard: Decodable {
     let set: String?
     let set_name: String?
     let oracle_id: String?
+    let rarity: String?
+    let cmc: Double?
     let preview: Preview?
 
     struct Preview: Decodable {
@@ -224,7 +226,11 @@ private struct ScryfallCard: Decodable {
             oracleID: oracle_id,
             // "Date added to Scryfall": prefer the preview/spoiler date (when present),
             // fall back to the set release date, then today (rare, no dates at all).
-            dateAdded: preview?.previewed_at ?? released_at ?? Self.todayString
+            dateAdded: preview?.previewed_at ?? released_at ?? Self.todayString,
+            // Representative rarity for the badge; mana value (cmc) for the `mv:` filter.
+            // Both are top-level on every oracle-card object (no face fallback needed).
+            rarity: rarity,
+            cmc: cmc
         )
     }
 

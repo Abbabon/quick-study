@@ -98,6 +98,23 @@ All ~25k card names (~2 MB) are loaded into memory at app launch as `[Card.Mini]
 
 Target latency: <1 ms per keystroke. Verified by `Tests/SearchEngineTests/SearchEngineTests.swift` golden cases.
 
+## 3a. Inline search filters (Scryfall-style)
+
+`QueryParser.parse` (in `Sources/QuickStudy/QueryParser.swift`) splits the raw search string into a free-text **name** query plus a list of structured **filters**, imitating a subset of Scryfall's syntax. `AppModel.runSearch` calls it, then `SearchEngine.search(name:filters:)`.
+
+| Key (aliases) | Field | Match semantics |
+|---|---|---|
+| `r`, `rarity` | rarity | exact (`r:common`) or tiered compare (`r>=rare`); "any printing" — see below |
+| `c`, `color` | colors | card colors ⊇ requested (`c:r`, `c:wu`, `c:colorless`) |
+| `t`, `type` | type line | substring (`t:creature`) |
+| `mv`, `cmc` | mana value | numeric compare (`mv:3`, `mv>=4`) |
+| `o`, `oracle` | oracle text | substring, quotes allowed (`o:"draw a card"`) |
+| `s`, `set` | set | set-code membership via the set index, or representative set code |
+
+Operators: `:`/`=` (equals/contains), `>`, `>=`, `<`, `<=`. A leading `-` negates (`-t:land`). Unknown keys fall back to free text. Filters AND together and are applied to the candidate set **before** the result limit. A filters-only query (empty name) returns all matching cards, shortest-name first.
+
+Filtering reads a parallel in-memory index, `[String: Card.FilterFields]` (keyed by card id), built by `CardStore.loadFilterFields()` and loaded into `SearchEngine` alongside the minis. It carries lowercased `type_line`/`oracle_text`, `colors`, `cmc`, and the **set of every rarity the card was ever printed at** — aggregated from the `printings` table and unioned with the card's representative `rarity` as a fallback. This is what makes `r:common` mean "ever printed common" (the pauper sense) and lets basic rarity filtering work even before a `--printings` run. The index adds a few MB on top of the ~2 MB minis; search still iterates the same ~25k rows. Golden cases: `QueryParserTests`, `SearchEngineFilterTests`.
+
 ## 4. Database schema
 
 ```sql
@@ -112,7 +129,9 @@ CREATE TABLE cards (
     toughness TEXT,
     colors TEXT NOT NULL DEFAULT '[]',   -- JSON array
     image_path TEXT,            -- relative to images dir; NULL if not yet downloaded
-    scryfall_uri TEXT NOT NULL
+    scryfall_uri TEXT NOT NULL,
+    rarity TEXT,                -- v9: representative printing's rarity (badge); NULL pre-refresh
+    cmc REAL                    -- v9: Scryfall mana value (drives the mv:/cmc: filter)
 );
 CREATE INDEX cards_name_lower ON cards (name_lower);
 

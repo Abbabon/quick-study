@@ -44,6 +44,7 @@ struct ResultList: View {
                     .lineLimit(1)
                     .font(scale.font(14))
                 Spacer(minLength: 4)
+                RarityBadge(rarity: mini.rarity, size: scale.size(15))
             }
             .padding(.horizontal, scale.pad(10))
             .padding(.vertical, scale.pad(4))
