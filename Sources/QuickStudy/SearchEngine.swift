@@ -61,15 +61,23 @@ public final class SearchEngine {
     /// can't be hidden by ranking. With a name present, ranking drives the order; with an
     /// empty name but filters present, all matching cards are returned, shortest-name first.
     public func search(name: String, filters: [Filter], limit: Int = 20) -> [Card.Mini] {
+        searchCounted(name: name, filters: filters, limit: limit).matches
+    }
+
+    /// Like `search(name:filters:limit:)` but also reports `total`: the number of cards that
+    /// matched *before* the `limit` was applied, so the UI can indicate how many results exist
+    /// beyond what it can display.
+    public func searchCounted(name: String, filters: [Filter], limit: Int = 20) -> (matches: [Card.Mini], total: Int) {
         let q = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if q.isEmpty {
-            guard !filters.isEmpty else { return [] }
+            guard !filters.isEmpty else { return ([], 0) }
             let matched = minis.filter { passes(filters, $0) }
-            return matched.sorted { a, b in
+            let sorted = matched.sorted { a, b in
                 let la = Self.lengthBonus(a.nameLower), lb = Self.lengthBonus(b.nameLower)
                 if la != lb { return la > lb }
                 return a.nameLower < b.nameLower
-            }.prefix(limit).map { $0 }
+            }
+            return (Array(sorted.prefix(limit)), sorted.count)
         }
 
         var bestByID: [String: Int] = [:]
@@ -102,7 +110,8 @@ public final class SearchEngine {
             if !filters.isEmpty && !passes(filters, m) { return nil }
             return (score, m)
         }
-        return scored.sorted { $0.0 > $1.0 }.prefix(limit).map { $0.1 }
+        let ranked = scored.sorted { $0.0 > $1.0 }.prefix(limit).map { $0.1 }
+        return (ranked, scored.count)
     }
 
     // MARK: - Inline filters

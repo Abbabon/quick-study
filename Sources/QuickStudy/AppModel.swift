@@ -8,6 +8,9 @@ import Shared
 final class AppModel: ObservableObject {
     @Published var query: String = ""
     @Published var results: [Card.Mini] = []
+    /// Total cards matching the current query *before* the display limit — `results.count`
+    /// is what's shown, `totalMatchCount` is how many exist.
+    @Published var totalMatchCount: Int = 0
     @Published var selectedID: String?
     @Published var selectedCard: Card?
     /// Printings of the selected card, for the preview's Printings list. Loaded lazily on
@@ -185,6 +188,7 @@ final class AppModel: ObservableObject {
         // when it clears the query); otherwise fall back to the placeholder.
         guard !query.isEmpty else {
             results = []
+            totalMatchCount = 0
             if selectedRecent == nil {
                 selectedID = nil
                 selectedCard = nil
@@ -194,7 +198,9 @@ final class AppModel: ObservableObject {
         }
         selectedRecent = nil
         let parsed = QueryParser.parse(query)
-        results = engine.search(name: parsed.name, filters: parsed.filters)
+        let counted = engine.searchCounted(name: parsed.name, filters: parsed.filters)
+        results = counted.matches
+        totalMatchCount = counted.total
         if let first = results.first, selectedID == nil || !results.contains(where: { $0.id == selectedID }) {
             select(first.id)
         } else if results.isEmpty {
