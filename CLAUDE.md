@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Workflow
+
+Never develop directly on `master`. **For each new feature, create a dedicated git worktree** so multiple features can be developed simultaneously without stepping on each other's working tree.
+
+```sh
+# Create a worktree + branch for a new feature (sibling dir, keeps master clean)
+git worktree add ../quick-study-<feature> -b feat/<feature>
+
+# List active worktrees
+git worktree list
+
+# Remove a worktree once its branch is merged
+git worktree remove ../quick-study-<feature>
+```
+
+Guidelines:
+- One worktree per in-flight feature; name the branch `feat/<feature>` and the directory `quick-study-<feature>`.
+- Keep each worktree's changes scoped to its own feature — don't mix unrelated work onto one branch.
+- The SPM build cache (`.build`) is per-worktree; the first `swift build` in a fresh worktree may re-fetch/re-compile dependencies.
+- The shared SQLite DB and image dir live under `~/Library/Application Support/QuickStudy/` and are *not* per-worktree — concurrent fetcher runs across worktrees write the same DB, so avoid running `mtg-fetcher --printings` from two worktrees at once.
+
 ## Commands
 
 ```sh
