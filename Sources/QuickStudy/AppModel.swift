@@ -30,7 +30,10 @@ final class AppModel: ObservableObject {
     @Published var recentlyAddedExpanded: Bool =
         UserDefaults.standard.object(forKey: "showRecentlyAddedColumn") as? Bool ?? true
     {
-        didSet { UserDefaults.standard.set(recentlyAddedExpanded, forKey: "showRecentlyAddedColumn") }
+        didSet {
+            UserDefaults.standard.set(recentlyAddedExpanded, forKey: "showRecentlyAddedColumn")
+            onRecentColumnChange?()
+        }
     }
     /// The recent card currently shown via the column, driving the preview meta strip.
     @Published var selectedRecent: Card.Recent?
@@ -67,6 +70,10 @@ final class AppModel: ObservableObject {
     /// Invoked (on the main actor) whenever the Lists column is shown/hidden, so the
     /// panel can grow/shrink its width to fit the column (mirrors `onPinnedChange`).
     var onListsColumnChange: (() -> Void)?
+
+    /// Invoked (on the main actor) whenever the Recently Added column is expanded/collapsed,
+    /// so the panel can grow/shrink its width to fit the column (mirrors `onListsColumnChange`).
+    var onRecentColumnChange: (() -> Void)?
 
     /// Invoked (on the main actor) to open the Settings window — wired by
     /// `AppDelegate` so the in-panel gear button can reach it without the menu bar.

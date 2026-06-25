@@ -18,7 +18,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.model = model
         super.init()
         model.onPinnedChange = { [weak self] in self?.adjustPanelForPins() }
-        model.onListsColumnChange = { [weak self] in self?.adjustPanelForLists() }
+        model.onListsColumnChange = { [weak self] in self?.adjustPanelWidth() }
+        model.onRecentColumnChange = { [weak self] in self?.adjustPanelWidth() }
     }
 
     /// Extra height reserved at the bottom for the pinned row. Sized a touch
@@ -33,8 +34,14 @@ final class PanelController: NSObject, NSWindowDelegate {
         model.listsColumnVisible ? scale.size(253) : 0
     }
 
+    /// Extra width reserved on the left for the Recently Added column (its 222pt frame
+    /// plus its divider), so expanding it never squeezes the preview. Mirrors `listsBandWidth`.
+    private func recentBandWidth(_ scale: UIScale) -> CGFloat {
+        (model.showsRecentColumn && model.recentlyAddedExpanded) ? scale.size(223) : 0
+    }
+
     private func panelSize(scale: UIScale) -> NSSize {
-        NSSize(width: scale.size(900) + listsBandWidth(scale),
+        NSSize(width: scale.size(900) + listsBandWidth(scale) + recentBandWidth(scale),
                height: scale.size(560) + pinnedBandHeight(scale))
     }
 
@@ -54,9 +61,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.setFrame(NSRect(origin: origin, size: target), display: true, animate: true)
     }
 
-    /// Grows/shrinks the live panel horizontally when the Lists column is toggled,
-    /// keeping the panel's center fixed and clamping to the active screen.
-    private func adjustPanelForLists() {
+    /// Grows/shrinks the live panel horizontally when a side column (Lists or Recently
+    /// Added) is toggled, keeping the panel's center fixed and clamping to the active screen.
+    private func adjustPanelWidth() {
         guard let panel = panel else { return }
         let target = panelSize(scale: UIScale(value: panelScale))
         let current = panel.frame
