@@ -98,6 +98,42 @@ public final class CardStore {
                 t.primaryKey(["list_id", "card_id"])
             }
         }
+        m.registerMigration("v6") { db in
+            // `oracle_id` = the stable Scryfall oracle identity, the join key from `cards`
+            // to `printings`. Backfilled by the next ingest (oracle_cards carries it);
+            // NULL until then, so set search is simply empty before the first --printings run.
+            try db.alter(table: "cards") { t in
+                t.add(column: "oracle_id", .text).indexed()
+            }
+        }
+        m.registerMigration("v7") { db in
+            // Set catalog ("set markings"). `icon_svg_uri` is stored for future symbol
+            // rendering; the UI shows set codes as text for now. Populated by the fetcher.
+            try db.create(table: "sets") { t in
+                t.column("code", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("released_at", .text)
+                t.column("set_type", .text)
+                t.column("card_count", .integer)
+                t.column("icon_svg_uri", .text)
+            }
+        }
+        m.registerMigration("v8") { db in
+            // One row per printing (card+set), from Scryfall's default_cards bulk. Linked
+            // to `cards` by `oracle_id`. `digital`/`games` drive the MTGO/Arena display
+            // toggles. `printing_id` is reserved for a future per-version image download.
+            try db.create(table: "printings") { t in
+                t.column("printing_id", .text).primaryKey()
+                t.column("oracle_id", .text).indexed()
+                t.column("set_code", .text).notNull()
+                t.column("set_name", .text).notNull()
+                t.column("collector_number", .text)
+                t.column("released_at", .text)
+                t.column("rarity", .text)
+                t.column("digital", .integer).notNull().defaults(to: 0)
+                t.column("games", .text).notNull().defaults(to: "[]")
+            }
+        }
         return m
     }
 
@@ -213,8 +249,8 @@ public final class CardStore {
                 let colorsJSON = (try? String(data: JSONEncoder().encode(c.colors), encoding: .utf8)) ?? "[]"
                 let firstSeen = (c.dateAdded.map { $0 < today ? $0 : today }) ?? today
                 try db.execute(sql: """
-                    INSERT INTO cards (id, name, name_lower, mana_cost, type_line, oracle_text, power, toughness, colors, image_path, scryfall_uri, set_code, set_name, date_added, first_seen)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO cards (id, name, name_lower, mana_cost, type_line, oracle_text, power, toughness, colors, image_path, scryfall_uri, oracle_id, set_code, set_name, date_added, first_seen)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         name = excluded.name,
                         name_lower = excluded.name_lower,
@@ -225,6 +261,7 @@ public final class CardStore {
                         toughness = excluded.toughness,
                         colors = excluded.colors,
                         scryfall_uri = excluded.scryfall_uri,
+                        oracle_id = excluded.oracle_id,
                         set_code = excluded.set_code,
                         set_name = excluded.set_name,
                         -- Keep the EARLIEST date Scryfall reports for this card: when a
@@ -242,6 +279,7 @@ public final class CardStore {
                     colorsJSON,
                     c.imagePath,
                     c.scryfallURI,
+                    c.oracleID,
                     c.setCode, c.setName, c.dateAdded, firstSeen,
                 ])
             }
@@ -452,7 +490,8 @@ public final class CardStore {
             toughness: row["toughness"],
             colors: colors,
             imagePath: row["image_path"],
-            scryfallURI: row["scryfall_uri"]
+            scryfallURI: row["scryfall_uri"],
+            oracleID: row["oracle_id"]
         )
     }
 }
