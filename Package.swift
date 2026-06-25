@@ -36,7 +36,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SearchEngineTests",
-            dependencies: ["QuickStudy", "Shared"],
+            dependencies: ["QuickStudy", "Shared", "Fetcher"],
             path: "Tests/SearchEngineTests"
         ),
     ]
