@@ -12,7 +12,13 @@ struct CardPreview: View {
     var onAddToList: (String) -> Void = { _ in }
     /// Adds the previewed card to a freshly-created list.
     var onAddToNewList: () -> Void = {}
+    /// Printings of the previewed card (Scryfall-style list).
+    var printings: [Card.Printing] = []
+    /// Called with a set name when the user taps a printing — drives "search this set".
+    var onSetTap: (String) -> Void = { _ in }
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
+    @AppStorage("showMTGOPrintings") private var showMTGOPrintings: Bool = true
+    @AppStorage("showArenaPrintings") private var showArenaPrintings: Bool = true
 
     var body: some View {
         let scale = UIScale(value: uiScaleValue)
@@ -45,6 +51,9 @@ struct CardPreview: View {
                 }
                 if let p = card.power, let t = card.toughness {
                     Text("\(p) / \(t)").font(scale.font(11)).foregroundStyle(.secondary)
+                }
+                if !visiblePrintings.isEmpty {
+                    printingsSection(scale: scale)
                 }
                 Spacer()
             }
@@ -116,6 +125,49 @@ struct CardPreview: View {
         .buttonStyle(.plain)
         .keyboardShortcut("p", modifiers: .command)
         .help(isPinned ? "Unpin (⌘P)" : "Pin (⌘P)")
+    }
+
+    /// Printings minus the digital platforms the user has hidden in Settings.
+    private var visiblePrintings: [Card.Printing] {
+        printings.filter { p in
+            if p.isMTGOOnly && !showMTGOPrintings { return false }
+            if p.isArenaOnly && !showArenaPrintings { return false }
+            return true
+        }
+    }
+
+    @ViewBuilder
+    private func printingsSection(scale: UIScale) -> some View {
+        VStack(alignment: .leading, spacing: scale.pad(4)) {
+            Text("Printings (\(visiblePrintings.count))")
+                .font(scale.font(11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(visiblePrintings) { p in
+                        Button { onSetTap(p.setName) } label: {
+                            HStack(spacing: scale.pad(6)) {
+                                Text(p.setName).font(scale.font(12)).lineLimit(1)
+                                Text("(\(p.setCode))").font(scale.font(11)).foregroundStyle(.secondary)
+                                Spacer(minLength: scale.pad(4))
+                                if let y = p.year {
+                                    Text(y).font(scale.font(11)).foregroundStyle(.tertiary)
+                                }
+                                if let r = p.rarity, !r.isEmpty {
+                                    Text(r.capitalized).font(scale.font(10)).foregroundStyle(.tertiary)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .padding(.vertical, scale.pad(2))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Search \(p.setName)")
+                    }
+                }
+            }
+            .frame(maxHeight: scale.size(150))
+        }
+        .padding(.top, scale.pad(4))
     }
 
     @ViewBuilder

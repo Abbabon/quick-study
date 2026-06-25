@@ -203,6 +203,8 @@ struct SettingsView: View {
     @AppStorage(ClearSearchTimeout.storageKey) private var clearSearchTimeoutSeconds: Double = ClearSearchTimeout.defaultValue
     @AppStorage("appUpdateAutoCheck") private var appUpdateAutoCheck: Bool = true
     @AppStorage("showRecentlyAdded") private var showRecentlyAdded: Bool = true
+    @AppStorage("showMTGOPrintings") private var showMTGOPrintings: Bool = true
+    @AppStorage("showArenaPrintings") private var showArenaPrintings: Bool = true
     @AppStorage(Appearance.storageKey) private var appearanceRaw: String = Appearance.defaultValue.rawValue
     // The OS (SMAppService) is the source of truth; seed from it and resync onAppear.
     @State private var launchAtLogin = LoginItem.isEnabled
@@ -371,6 +373,14 @@ struct SettingsView: View {
                 SettingsRow(symbol: "clock.arrow.circlepath", style: TileStyle(0x5B6BE0, 0x7A45B6),
                             label: "Show recently added cards") {
                     Toggle("", isOn: $showRecentlyAdded).labelsHidden().toggleStyle(.switch)
+                }
+                SettingsRow(symbol: "o.circle.fill", style: TileStyle(0x3E9BFF, 0x1E6FE0),
+                            label: "Show MTGO printings") {
+                    Toggle("", isOn: $showMTGOPrintings).labelsHidden().toggleStyle(.switch)
+                }
+                SettingsRow(symbol: "a.circle.fill", style: TileStyle(0xFF9F0A, 0xE0457A),
+                            label: "Show Arena printings") {
+                    Toggle("", isOn: $showArenaPrintings).labelsHidden().toggleStyle(.switch)
                 }
                 SettingsRow(symbol: "clock", style: TileStyle(0xFF9F0A, 0xFF7A00),
                             label: "Clear search after", last: true) {

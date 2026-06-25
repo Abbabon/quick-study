@@ -171,7 +171,9 @@ struct SearchPanel: View {
                         model.addToNewList(id)
                         if !model.listsColumnVisible { model.toggleListsColumn() }
                     }
-                }
+                },
+                printings: model.selectedPrintings,
+                onSetTap: { model.searchSet($0) }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
