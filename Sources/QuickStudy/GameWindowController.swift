@@ -2,12 +2,11 @@ import AppKit
 import SwiftUI
 
 /// Hosts `GameView` in a normal, activating NSWindow. The SwiftUI `WindowGroup` scene
-/// is unreliable in `LSUIElement` apps (see `SettingsWindowController`), so we own the
-/// window directly.
+/// has historically been unreliable in this app (see `SettingsWindowController`), so we
+/// own the window directly.
 ///
-/// Unlike Settings, the game window opts the app into `.regular` activation while it's
-/// open, so it gets a Dock icon and shows up in ⌘-Tab. On close we revert to
-/// `.accessory` to restore the menu-bar-only posture.
+/// The app runs as a `.regular` Dock app at all times, so this controller only has to
+/// surface and focus its window — no activation-policy juggling.
 @MainActor
 final class GameWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
@@ -35,14 +34,7 @@ final class GameWindowController: NSObject, NSWindowDelegate {
             w.center()
             window = w
         }
-        // Become a regular app so the window appears in the Dock and ⌘-Tab.
-        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        // Back to menu-bar-only once the game window is gone.
-        NSApp.setActivationPolicy(.accessory)
     }
 }

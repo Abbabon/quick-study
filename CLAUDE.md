@@ -36,7 +36,7 @@ Two executables sharing one SQLite DB and one image directory under `~/Library/A
 
 - **`Sources/Shared`** — library imported by both executables. Owns `Paths`, the `Card` / `Card.Mini` models, and the GRDB-backed `CardStore` (migrations, upserts, meta kv). Any cross-boundary contract belongs here.
 - **`Sources/Fetcher`** (`mtg-fetcher` CLI) — the only writer. Four phases (`json` → `ingest` → `images` → `done`/`error`), each emitting one NDJSON line per progress tick to stdout, mirrored to `~/Library/Logs/QuickStudy/fetcher.log`. Idempotent and resumable: image downloads skip files already on disk; ingest is `INSERT … ON CONFLICT DO UPDATE`. `--no-images` skips phase 3.
-- **`Sources/QuickStudy`** (SwiftUI menu-bar app) — `LSUIElement = YES`, no Dock icon. `AppDelegate` wires the global hotkey via Sindre Sorhus's `KeyboardShortcuts`. `PanelController` is a borderless non-activating `NSPanel` with an `NSVisualEffectView` (`.hudWindow`) — Spotlight-style. `AppModel` (`@MainActor ObservableObject`) holds query/results/refresh state and owns `SearchEngine`, `CardStore`, `FetcherProcess`, and an `NSCache` for full-row detail.
+- **`Sources/QuickStudy`** (SwiftUI menu-bar app) — runs as a `.regular` Dock app (`LSUIElement = NO` + `NSApp.setActivationPolicy(.regular)`) while also living in the menu bar. `AppDelegate` wires the global hotkey via Sindre Sorhus's `KeyboardShortcuts`. `PanelController` is a borderless non-activating `NSPanel` with an `NSVisualEffectView` (`.hudWindow`) — Spotlight-style. `AppModel` (`@MainActor ObservableObject`) holds query/results/refresh state and owns `SearchEngine`, `CardStore`, `FetcherProcess`, and an `NSCache` for full-row detail.
 
 ### Subprocess protocol
 

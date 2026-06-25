@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory) // no Dock icon
+        NSApp.setActivationPolicy(.regular) // always show a Dock icon
         Appearance.apply(Appearance.current()) // honor the saved Light/Dark/Auto choice
 
         panel = PanelController(model: model)
@@ -97,8 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _ in self?.refreshUpdateUI() }
             .store(in: &cancellables)
 
-        // Check on launch, then keep checking. A single long Timer is unreliable in an
-        // LSUIElement app: App Nap throttles it and system sleep coalesces its fire date, so
+        // Check on launch, then keep checking. A single long Timer is unreliable for a
+        // background app: App Nap throttles it and system sleep coalesces its fire date, so
         // a 24h timer effectively never fired across overnight sleep. Instead use a shorter
         // timer (the 1h network throttle in `checkForUpdates` caps actual Scryfall calls) plus
         // a wake-from-sleep trigger, which covers the common laptop-wakes-in-the-morning case.
