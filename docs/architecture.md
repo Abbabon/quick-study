@@ -143,10 +143,10 @@ CREATE TABLE sets (
 
 CREATE TABLE printings (
     printing_id      TEXT PRIMARY KEY,  -- Scryfall card UUID from default_cards
-    oracle_id        TEXT NOT NULL,     -- join key → cards.oracle_id
+    oracle_id        TEXT,              -- indexed; join key → cards.oracle_id
     set_code         TEXT NOT NULL,
     set_name         TEXT NOT NULL,
-    collector_number TEXT NOT NULL,
+    collector_number TEXT,
     released_at      TEXT,
     rarity           TEXT,
     digital          INTEGER NOT NULL DEFAULT 0,  -- 1 = MTGO / Arena only
@@ -168,7 +168,7 @@ These phases are intentionally wired into **manual refresh only**:
 
 | Mode | Flags | Phases |
 |---|---|---|
-| Full refresh (manual) | `--printings` | json → ingest → images → sets → printings |
+| Full refresh (manual) | `--printings` | json → ingest → sets → printings → images |
 | Ingest-only (manual) | `--no-images --printings` | json → ingest → sets → printings |
 | Silent background sync | _(no flag)_ | json → ingest only |
 
