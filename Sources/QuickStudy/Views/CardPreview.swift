@@ -44,8 +44,7 @@ struct CardPreview: View {
                     Text(type).font(scale.font(12)).foregroundStyle(.secondary)
                 }
                 if let text = card.oracleText, !text.isEmpty {
-                    Text(text)
-                        .font(scale.font(13))
+                    OracleTextView(text: text, font: scale.font(13), symbolSize: scale.size(13))
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }

@@ -29,15 +29,41 @@ TAP_DIR="${TAP_DIR:-$ROOT/../homebrew-quick-study}"
 PLIST="$ROOT/Resources/Info.plist"
 
 VERSION="${1:-}"
+shift || true
 DRY_RUN=0
-[[ "${2:-}" == "--dry-run" ]] && DRY_RUN=1
+NOTES_FILE=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)
+            DRY_RUN=1
+            ;;
+        --notes-file)
+            NOTES_FILE="${2:-}"
+            if [[ -z "$NOTES_FILE" ]]; then
+                echo "error: --notes-file requires a path argument" >&2
+                exit 1
+            fi
+            shift
+            ;;
+        *)
+            echo "error: unknown argument '$1'" >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 if [[ -z "$VERSION" ]]; then
-    echo "usage: $0 <version> [--dry-run]" >&2
+    echo "usage: $0 <version> [--dry-run] [--notes-file <path>]" >&2
     exit 1
 fi
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "error: version '$VERSION' is not semver (X.Y.Z)" >&2
+    exit 1
+fi
+
+if [[ -n "$NOTES_FILE" && ! -f "$NOTES_FILE" ]]; then
+    echo "error: --notes-file '$NOTES_FILE' not found" >&2
     exit 1
 fi
 
@@ -93,15 +119,22 @@ git -C "$ROOT" push origin "$TAG"
 
 # --- GitHub release ---
 echo "==> Creating GitHub release $TAG"
-gh release create "$TAG" "$ZIP" \
-    --repo "$REPO" \
-    --title "$APP_NAME $VERSION" \
-    --notes "QuickStudy $VERSION
+if [[ -n "$NOTES_FILE" ]]; then
+    gh release create "$TAG" "$ZIP" \
+        --repo "$REPO" \
+        --title "$APP_NAME $VERSION" \
+        --notes-file "$NOTES_FILE"
+else
+    gh release create "$TAG" "$ZIP" \
+        --repo "$REPO" \
+        --title "$APP_NAME $VERSION" \
+        --notes "QuickStudy $VERSION
 
 Install:
 \`\`\`sh
 brew install --cask $TAP_REF
 \`\`\`"
+fi
 
 # --- update tap ---
 if [[ ! -d "$TAP_DIR" ]]; then

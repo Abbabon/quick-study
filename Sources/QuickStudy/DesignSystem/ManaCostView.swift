@@ -9,13 +9,53 @@ struct ManaCostView: View {
         let pips = ManaCost.pips(from: cost)
         HStack(spacing: 3) {
             ForEach(Array(pips.enumerated()), id: \.offset) { _, pip in
-                Text(pip.glyph)
-                    .font(.system(size: round(size * 0.58), weight: .bold, design: .monospaced))
-                    .foregroundStyle(DS.manaInk)
-                    .frame(width: size, height: size)
-                    .background(Circle().fill(DS.tint(for: pip.identity)))
-                    .overlay(Circle().strokeBorder(Color.black.opacity(0.18), lineWidth: 0.5))
+                ManaPipDisc(pip: pip, size: size)
             }
         }
+    }
+}
+
+/// One mana pip drawn as a disc: a solid tinted circle, or — for hybrids like
+/// `{W/U}` and `{2/W}` — a diagonally split two-tone disc. Shared by
+/// ``ManaCostView`` and the inline oracle-text renderer so they stay identical.
+struct ManaPipDisc: View {
+    let pip: ManaPip
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            if let halves = pip.halves, halves.count == 2 {
+                // "/"-diagonal split: first half top-left, second bottom-right.
+                Circle().fill(DS.tint(for: halves[0].identity))
+                Circle().fill(DS.tint(for: halves[1].identity))
+                    .clipShape(BottomRightTriangle())
+                glyph(halves[0].glyph, scale: 0.40).offset(x: -size * 0.19, y: -size * 0.19)
+                glyph(halves[1].glyph, scale: 0.40).offset(x: size * 0.19, y: size * 0.19)
+            } else {
+                Circle().fill(DS.tint(for: pip.identity))
+                glyph(pip.glyph, scale: 0.58)
+            }
+        }
+        .frame(width: size, height: size)
+        .overlay(Circle().strokeBorder(Color.black.opacity(0.18), lineWidth: 0.5))
+    }
+
+    private func glyph(_ s: String, scale: CGFloat) -> some View {
+        Text(s)
+            .font(.system(size: round(size * scale), weight: .bold, design: .monospaced))
+            .foregroundStyle(DS.manaInk)
+    }
+}
+
+/// The bottom-right half of the frame, split by the anti-diagonal from
+/// bottom-left to top-right (the `/` in a hybrid symbol).
+private struct BottomRightTriangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.maxX, y: rect.minY))    // top-right
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY)) // bottom-right
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY)) // bottom-left
+        p.closeSubpath()
+        return p
     }
 }
