@@ -124,4 +124,13 @@ final class SearchEngineTests: XCTestCase {
         let engine = SearchEngine(minis: corpus)
         XCTAssertLessThanOrEqual(engine.search("l", limit: 3).count, 3)
     }
+
+    func testSearchCountedReportsTotalBeyondLimit() {
+        let engine = SearchEngine(minis: corpus)
+        let unlimited = engine.search("l", limit: 1000).count
+        let counted = engine.searchCounted(name: "l", filters: [], limit: 3)
+        XCTAssertLessThanOrEqual(counted.matches.count, 3)
+        XCTAssertEqual(counted.total, unlimited)
+        XCTAssertGreaterThanOrEqual(counted.total, counted.matches.count)
+    }
 }

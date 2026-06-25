@@ -4,27 +4,49 @@ import Shared
 
 struct ResultList: View {
     @ObservedObject var model: AppModel
+    @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(model.results, id: \.id) { mini in
-                        Row(model: model, mini: mini, selected: mini.id == model.selectedID) {
-                            model.select(mini.id)
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(model.results, id: \.id) { mini in
+                            Row(model: model, mini: mini, selected: mini.id == model.selectedID) {
+                                model.select(mini.id)
+                            }
+                            .id(mini.id)
                         }
-                        .id(mini.id)
+                    }
+                    .padding(.vertical, 6)
+                }
+                .onChange(of: model.selectedID) { _, id in
+                    if let id = id {
+                        withAnimation(DS.Motion.selectScroll) {
+                            proxy.scrollTo(id, anchor: .center)
+                        }
                     }
                 }
-                .padding(.vertical, 6)
             }
-            .onChange(of: model.selectedID) { _, id in
-                if let id = id {
-                    withAnimation(DS.Motion.selectScroll) {
-                        proxy.scrollTo(id, anchor: .center)
-                    }
-                }
-            }
+            countFooter
+        }
+    }
+
+    private var countFooter: some View {
+        let scale = UIScale(value: uiScaleValue)
+        let total = model.totalMatchCount
+        let shown = model.results.count
+        let label = total > shown
+            ? "\(shown) of \(total)"
+            : "\(total) result\(total == 1 ? "" : "s")"
+        return VStack(spacing: 0) {
+            Divider().opacity(0.2)
+            Text(label)
+                .font(scale.font(11))
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, scale.pad(12))
+                .padding(.vertical, scale.pad(6))
         }
     }
 
