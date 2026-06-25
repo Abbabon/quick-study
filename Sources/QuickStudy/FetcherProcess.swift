@@ -30,16 +30,18 @@ final class FetcherProcess {
     }
 
     enum Mode {
-        case full          // json → ingest → images
-        case ingestOnly    // json → ingest (no images)
-        case imagesOnly    // reuse bulk JSON → images only
-        case ingestArtwork // unique_artwork → artwork metadata (no images)
+        case full           // json → ingest → sets → printings → images
+        case ingestOnly     // json → ingest (no images, no printings) — silent background sync
+        case ingestPrintings // json → ingest → sets → printings (no images) — manual text-only refresh
+        case imagesOnly     // reuse bulk JSON → images only
+        case ingestArtwork  // unique_artwork → artwork metadata (no images)
         case downloadAllArt // unique_artwork → metadata + all art_crops
 
         var arguments: [String] {
             switch self {
-            case .full: return []
+            case .full: return ["--printings"]
             case .ingestOnly: return ["--no-images"]
+            case .ingestPrintings: return ["--no-images", "--printings"]
             case .imagesOnly: return ["--images-only"]
             case .ingestArtwork: return ["--artwork"]
             case .downloadAllArt: return ["--artwork", "--download-art"]
