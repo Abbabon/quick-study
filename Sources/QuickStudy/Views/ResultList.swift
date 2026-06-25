@@ -51,7 +51,11 @@ struct ResultList: View {
     }
 
     private struct Row: View {
-        @ObservedObject var model: AppModel
+        // Plain reference, not @ObservedObject: the row's visible content depends only on
+        // `mini`/`selected`, and the context menu (the sole model-dependent part) is rebuilt
+        // each time it opens. Observing the whole model here made every keystroke — which
+        // republishes `query`/`results` — re-invalidate every visible row.
+        let model: AppModel
         let mini: Card.Mini
         let selected: Bool
         let onTap: () -> Void
