@@ -45,6 +45,8 @@ struct ManaPipDisc: View {
         Text(s)
             .font(.system(size: round(size * scale), weight: .bold, design: .monospaced))
             .foregroundStyle(DS.manaInk(for: identity))
+            // The Unicode tap arrow sits 180° from the printed card glyph.
+            .rotationEffect(s == ManaCost.tapGlyph ? .degrees(180) : .zero)
     }
 }
 

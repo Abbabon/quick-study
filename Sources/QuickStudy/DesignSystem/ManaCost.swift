@@ -28,8 +28,13 @@ public struct ManaPip: Equatable {
 
 /// Pure parser for Scryfall mana-cost strings like "{2}{U}{U}".
 /// W/U/B/R/G map to their color; everything else (numbers, X, C, hybrids,
-/// Phyrexian) renders as a colorless disc showing the inner text. "{T}" → ↺.
+/// Phyrexian) renders as a colorless disc showing the inner text. "{T}" → ↻.
 public enum ManaCost {
+    /// Glyph used for the tap symbol `{T}`. The Unicode clockwise arrow curls the
+    /// right way but sits 180° from the printed card symbol, so the renderer
+    /// rotates it half a turn — see `ManaPipDisc`.
+    public static let tapGlyph = "↻"
+
     public static func pips(from cost: String) -> [ManaPip] {
         guard !cost.isEmpty else { return [] }
         var pips: [ManaPip] = []
@@ -68,7 +73,7 @@ public enum ManaCost {
         case "B": return ManaPip.Half(glyph: "B", identity: .black)
         case "R": return ManaPip.Half(glyph: "R", identity: .red)
         case "G": return ManaPip.Half(glyph: "G", identity: .green)
-        case "T": return ManaPip.Half(glyph: "↺", identity: .colorless)
+        case "T": return ManaPip.Half(glyph: tapGlyph, identity: .colorless)
         case "P": return ManaPip.Half(glyph: "Φ", identity: .colorless)
         default:  return ManaPip.Half(glyph: String(token), identity: .colorless)
         }
