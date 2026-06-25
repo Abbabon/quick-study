@@ -68,8 +68,17 @@ final class SearchEngineTests: XCTestCase {
         Card.Mini(id: "s5", name: "MSC Promo", colors: [], setCode: "ZZZ", setName: "Promo Set"),
     ]
 
+    /// Set membership matching `setCorpus`, as `CardStore.loadSetIndex()` would produce it.
+    private let setGroups: [Card.SetGroup] = [
+        Card.SetGroup(code: "MSC", name: "Mishra's Set", memberIDs: ["s0", "s1"]),
+        Card.SetGroup(code: "MH3", name: "Modern Horizons 3", memberIDs: ["s2"]),
+        Card.SetGroup(code: "JTM", name: "Jace's Tome", memberIDs: ["s3"]),
+        Card.SetGroup(code: "M21", name: "Core 2021", memberIDs: ["s4"]),
+        Card.SetGroup(code: "ZZZ", name: "Promo Set", memberIDs: ["s5"]),
+    ]
+
     func testExactSetCodeSurfacesSetCards() {
-        let engine = SearchEngine(minis: setCorpus)
+        let engine = SearchEngine(minis: setCorpus, sets: setGroups)
         let names = engine.search("msc").map(\.name)
         XCTAssertTrue(names.contains("Mox Sapphire"))
         XCTAssertTrue(names.contains("Black Lotus"))
@@ -78,7 +87,7 @@ final class SearchEngineTests: XCTestCase {
     func testSetCodeBeatsNameSubsequence() {
         // "msc" is the exact set code for "Mox Sapphire" / "Black Lotus", and also a
         // subsequence of "Mind Sculptor Clone" (M-S-C). The set-code matches must win.
-        let engine = SearchEngine(minis: setCorpus)
+        let engine = SearchEngine(minis: setCorpus, sets: setGroups)
         let names = engine.search("msc").map(\.name)
         let idxSetCard = names.firstIndex(of: "Mox Sapphire")!
         let idxSubseq = names.firstIndex(of: "Mind Sculptor Clone") ?? Int.max
@@ -88,14 +97,21 @@ final class SearchEngineTests: XCTestCase {
     func testNamePrefixBeatsSetCode() {
         // "msc" is a name prefix of "MSC Promo" (name-prefix, 800) AND the exact set code
         // of "Mox Sapphire" / "Black Lotus" (set-code, 500). The name match must win.
-        let engine = SearchEngine(minis: setCorpus)
+        let engine = SearchEngine(minis: setCorpus, sets: setGroups)
         XCTAssertEqual(engine.search("msc").first?.name, "MSC Promo")
     }
 
     func testSetNamePrefixSurfacesCards() {
-        let engine = SearchEngine(minis: setCorpus)
+        let engine = SearchEngine(minis: setCorpus, sets: setGroups)
         let names = engine.search("modern").map(\.name)
         XCTAssertTrue(names.contains("Modern Staple"))
+    }
+
+    func testSetNameReturnsAllMembers() {
+        let engine = SearchEngine(minis: setCorpus, sets: setGroups)
+        let names = engine.search("mishra").map(\.name)
+        XCTAssertTrue(names.contains("Mox Sapphire"))
+        XCTAssertTrue(names.contains("Black Lotus"))
     }
 
     func testEmptyQueryReturnsNothing() {
