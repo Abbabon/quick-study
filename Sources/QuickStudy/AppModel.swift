@@ -114,6 +114,12 @@ final class AppModel: ObservableObject {
             case .none, .downloading, .installing, .failed: return false
             }
         }
+
+        /// True when a downloaded update is staged and only a relaunch is left.
+        var isReadyToRelaunch: Bool {
+            if case .readyToRelaunch = self { return true }
+            return false
+        }
     }
 
     private final class CachedCard { let card: Card; init(_ c: Card) { self.card = c } }

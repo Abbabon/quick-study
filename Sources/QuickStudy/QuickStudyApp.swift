@@ -42,6 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onOpenSettings = { [weak self] in self?.settingsWindow.show() }
         model.onOpenGame = { [weak self] in self?.gameWindow.show() }
 
+        // Keep the search panel pinned open (hovering) while the Settings window is visible,
+        // so the two can be used side by side instead of Settings dismissing the panel.
+        settingsWindow.onVisibilityChange = { [weak self] visible in
+            self?.panel.companionWindowActive = visible
+        }
+
         notifier.configure()
         notifier.onUpdateAction = { [weak self] in self?.model.startImageDownload() }
         notifier.onOpenPanel = { [weak self] in self?.panel.show() }
@@ -202,6 +208,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openGame() {
         gameWindow.show()
+    }
+
+    // MARK: Dock integration
+
+    /// Right-clicking the Dock icon shows the app's actions (mirroring the status-bar menu)
+    /// above the system-supplied items (Show All Windows, Hide, Quit). Rebuilt on demand so
+    /// the conditional update entries reflect current state.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+
+        if model.newCardsPendingImages > 0 {
+            let n = model.newCardsPendingImages
+            menu.addItem(withTitle: "Download Images (\(n) new card\(n == 1 ? "" : "s"))…",
+                         action: #selector(downloadNewImages), keyEquivalent: "")
+        }
+        if model.appUpdateState.isActionable, let version = model.appUpdateState.version {
+            let title = model.appUpdateState.isReadyToRelaunch
+                ? "Relaunch to Update to \(version)…"
+                : "Update QuickStudy \(version)…"
+            menu.addItem(withTitle: title, action: #selector(installAppUpdate), keyEquivalent: "")
+        }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+
+        let search = menu.addItem(withTitle: "Open Search", action: #selector(openSearch), keyEquivalent: "")
+        search.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Open Search")
+        let play = menu.addItem(withTitle: "Play…", action: #selector(openGame), keyEquivalent: "")
+        play.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: "Play")
+        menu.addItem(.separator())
+        let refresh = menu.addItem(withTitle: "Refresh Database…", action: #selector(refreshNow), keyEquivalent: "")
+        refresh.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh Database")
+        menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: "")
+
+        for item in menu.items where item.action != nil { item.target = self }
+        return menu
+    }
+
+    /// Clicking the Dock icon opens the Spotlight-style search panel.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSearch()
+        // Return false so AppKit skips its default reopen handling, which would otherwise
+        // restore the last closed-but-not-released window (e.g. Settings) and steal key
+        // focus from the panel — making it auto-dismiss right after we show it.
+        return false
     }
 }
 

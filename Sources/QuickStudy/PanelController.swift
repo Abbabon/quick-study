@@ -9,6 +9,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var lastHiddenAt: Date?
     private let model: AppModel
 
+    /// Set while a floating companion window (the hovering Settings window) is open, so the
+    /// panel does not auto-dismiss when that window takes key focus — the two hover together.
+    /// `AppDelegate` flips this on when opening Settings and off when it closes.
+    var companionWindowActive = false
+
     init(model: AppModel) {
         self.model = model
         super.init()
@@ -86,8 +91,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard let panel = panel else { return }
         clearSearchIfTimedOut()
         centerOnActiveScreen(panel)
-        panel.makeKeyAndOrderFront(nil)
+        // Activate FIRST, then order the panel key/front LAST. As a `.regular` Dock app,
+        // `NSApp.activate` performs a full app activation that surfaces another of our
+        // windows (e.g. the closed-but-not-released Settings window). If we order the panel
+        // front before activating, that surfaced window steals key focus from the panel and
+        // `windowDidResignKey` immediately dismisses it — so the hotkey appears to do nothing
+        // when the app isn't already frontmost. Ordering the panel front after activation
+        // makes it the last (and therefore key) window.
         NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
     }
 
     func hide() {
@@ -159,7 +171,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     func windowDidResignKey(_ notification: Notification) {
-        // Auto-dismiss when the user clicks elsewhere.
+        // Stay open while a floating companion window (Settings) is up, so the two hover
+        // together. Otherwise auto-dismiss when the user clicks elsewhere. Leaving the app
+        // entirely is still handled separately by `hidesOnDeactivate`.
+        if companionWindowActive { return }
         hide()
     }
 }
