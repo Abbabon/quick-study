@@ -20,6 +20,8 @@ swift test --filter SearchEngineTests.SearchEngineTests/testExactBeatsPrefix
 # Dev iteration without the .app bundle — the app shells out to mtg-fetcher,
 # so MTG_FETCHER_PATH must point at the built binary or it won't find it.
 swift run mtg-fetcher --no-images
+# Add --printings to also run the sets + printings phases (~150 MB default_cards download; manual refresh only)
+swift run mtg-fetcher --no-images --printings
 MTG_FETCHER_PATH="$(swift build --show-bin-path)/mtg-fetcher" swift run QuickStudy
 
 # Regenerate the app icon (needs Python 3 + Pillow)
@@ -41,7 +43,7 @@ Two executables sharing one SQLite DB and one image directory under `~/Library/A
 `FetcherProcess` spawns `mtg-fetcher`, reads stdout incrementally via `Pipe.readabilityHandler`, splits on `\n`, decodes each NDJSON line, and forwards to `AppModel.applyFetcherEvent(_:)` on the main actor. Schema:
 
 ```json
-{"phase":"json|ingest|images|start|done|error","done":<int|null>,"total":<int|null>,"message":<string|null>}
+{"phase":"json|ingest|images|sets|printings|start|done|error","done":<int|null>,"total":<int|null>,"message":<string|null>}
 ```
 
 When adding a new phase or field, update both `Fetcher/ProgressEmitter.swift` and `QuickStudy/FetcherProcess.swift` in lockstep.
@@ -52,7 +54,7 @@ When adding a new phase or field, update both `Fetcher/ProgressEmitter.swift` an
 
 ### Database
 
-GRDB with WAL + `synchronous=NORMAL`. Migrations via `DatabaseMigrator` in `CardStore`. `cards` table is indexed on `name_lower`; `meta` is a kv table (`last_refresh`, `bulk_updated_at`). Schema changes require a new migration registered in `CardStore`.
+GRDB with WAL + `synchronous=NORMAL`. Migrations via `DatabaseMigrator` in `CardStore`. `cards` table is indexed on `name_lower`; `meta` is a kv table (`last_refresh`, `bulk_updated_at`). Migration v6 adds `cards.oracle_id` (the join key to `printings`); v7 adds the `sets` table (code, name, set_type, card_count, `icon_svg_uri` — stored for future symbol rendering); v8 adds the `printings` table (one row per card+set, indexed on `oracle_id`). Schema changes require a new migration registered in `CardStore`.
 
 ### Bundling
 

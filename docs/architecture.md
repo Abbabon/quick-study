@@ -125,6 +125,70 @@ CREATE TABLE meta (
 
 WAL journal mode, `synchronous = NORMAL`. Migrations via GRDB's `DatabaseMigrator`.
 
+## 4a. Card printings & set markings
+
+### Tables
+
+Two tables were added in migrations v7 and v8 to support per-printing data:
+
+```sql
+CREATE TABLE sets (
+    code         TEXT PRIMARY KEY,   -- Scryfall set code, e.g. "ltr"
+    name         TEXT NOT NULL,      -- display name, e.g. "The Lord of the Rings"
+    released_at  TEXT,
+    set_type     TEXT,
+    card_count   INTEGER,
+    icon_svg_uri TEXT                -- stored for future set-symbol rendering; not rendered yet
+);
+
+CREATE TABLE printings (
+    printing_id      TEXT PRIMARY KEY,  -- Scryfall card UUID from default_cards
+    oracle_id        TEXT NOT NULL,     -- join key → cards.oracle_id
+    set_code         TEXT NOT NULL,
+    set_name         TEXT NOT NULL,
+    collector_number TEXT NOT NULL,
+    released_at      TEXT,
+    rarity           TEXT,
+    digital          INTEGER NOT NULL DEFAULT 0,  -- 1 = MTGO / Arena only
+    games            TEXT NOT NULL DEFAULT '[]'   -- JSON array
+);
+CREATE INDEX printings_oracle_id ON printings (oracle_id);
+```
+
+Migration v6 adds `oracle_id TEXT` to the `cards` table. This is the join key between a canonical oracle card and all of its individual printings. Before a `--printings` refresh the column is NULL and the Printings list is empty — this is expected and graceful.
+
+### Fetcher `--printings` flag
+
+Passing `--printings` to `mtg-fetcher` activates two additional phases after the standard oracle `ingest`:
+
+- **`sets` phase** — downloads Scryfall's `default_cards` bulk file (~150 MB) and upserts every set encountered into the `sets` table.
+- **`printings` phase** — iterates the same download and upserts one row per card+set into the `printings` table.
+
+These phases are intentionally wired into **manual refresh only**:
+
+| Mode | Flags | Phases |
+|---|---|---|
+| Full refresh (manual) | `--printings` | json → ingest → images → sets → printings |
+| Ingest-only (manual) | `--no-images --printings` | json → ingest → sets → printings |
+| Silent background sync | _(no flag)_ | json → ingest only |
+
+The silent background sync remains oracle-only to avoid the ~150 MB `default_cards` download on every scheduled refresh.
+
+### SearchEngine set index
+
+`SearchEngine` maintains an in-memory set index alongside the card-name index. On load it calls `CardStore.loadSetIndex()`, which returns `[Card.SetGroup]` (set code, set name, member oracle IDs). A query that prefix-matches a known set code or set name returns **all member cards** from that set, fixing a bug where set-name queries returned only the handful of cards whose name happened to contain the set-name string.
+
+### UI — Printings list
+
+The card preview shows a collapsible **Printings** list below the oracle text. Clicking a printing's set badge fills the search field with the set name, triggering the set-index path above. Settings → Search exposes two toggles (default ON):
+
+- **Show MTGO printings** — when off, hides rows where `digital = 1` and `games` contains only `"mtgo"`.
+- **Show Arena printings** — when off, hides rows where `digital = 1` and `games` contains only `"arena"`.
+
+### Future work
+
+Show & download other versions of a card — the `printings` table keys every printing by `printing_id`; a future flow lists versions, resolves `printing_id` → image, and caches under a per-printing path (e.g. `images/printings/<printing_id>.jpg`); set symbols can later use the stored `sets.icon_svg_uri`.
+
 ## 5. Process boundaries & coupling
 
 Only the SQLite DB and image directory are shared state between the two executables. The app does not in-process the bulk JSON — it always shells out to the fetcher. This is the key design choice that makes the "separate scrape/cache flow" requirement clean:
@@ -177,7 +241,7 @@ needed: `release.sh` already builds the signature-preserving zip and updates the
 Every line is one JSON object:
 
 ```json
-{"phase": "ingest" | "images" | "json" | "done" | "error" | "start",
+{"phase": "ingest" | "images" | "json" | "sets" | "printings" | "done" | "error" | "start",
  "done":  <int|null>,
  "total": <int|null>,
  "message": <string|null>}
