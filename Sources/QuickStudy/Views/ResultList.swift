@@ -14,6 +14,9 @@ struct ResultList: View {
                         ForEach(model.results, id: \.id) { mini in
                             Row(model: model, mini: mini, selected: mini.id == model.selectedID) {
                                 model.select(mini.id)
+                                // Clicking a row pulls focus off the search field; restore it so
+                                // ↑↓ keep navigating the list after a card is picked.
+                                model.focusSearchField()
                             }
                             .id(mini.id)
                         }
