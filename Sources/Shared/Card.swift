@@ -34,6 +34,10 @@ public struct Card: Codable, Equatable, Sendable {
     public let scryfallURI: String
     public let setCode: String?
     public let setName: String?
+    /// Stable Scryfall oracle identity (`oracle_id`). The join key to the `printings`
+    /// table. Distinct from `id`, which is one representative printing's UUID. NULL on
+    /// rows ingested before this column existed (backfilled by the next ingest).
+    public let oracleID: String?
     public let dateAdded: String?  // "YYYY-MM-DD" (Scryfall released_at), nil if unknown
 
     public init(
@@ -49,6 +53,7 @@ public struct Card: Codable, Equatable, Sendable {
         scryfallURI: String,
         setCode: String? = nil,
         setName: String? = nil,
+        oracleID: String? = nil,
         dateAdded: String? = nil
     ) {
         self.id = id
@@ -63,6 +68,7 @@ public struct Card: Codable, Equatable, Sendable {
         self.scryfallURI = scryfallURI
         self.setCode = setCode
         self.setName = setName
+        self.oracleID = oracleID
         self.dateAdded = dateAdded
     }
 
@@ -121,6 +127,58 @@ public struct Card: Codable, Equatable, Sendable {
             self.setCode = setCode
             self.setName = setName
             self.firstSeen = firstSeen
+        }
+    }
+
+    /// One printing of a card (a card+set row from Scryfall's `default_cards`). Drives the
+    /// preview Printings list. `oracleID` links it back to the oracle `Card`. `digital` +
+    /// `games` distinguish MTGO/Arena-only printings for the display toggles. `printing_id`
+    /// is reserved for a future "download this specific version" flow.
+    public struct Printing: Sendable, Equatable, Identifiable {
+        public let printingID: String
+        public let oracleID: String?
+        public let setCode: String
+        public let setName: String
+        public let collectorNumber: String?
+        public let releasedAt: String?   // "YYYY-MM-DD"
+        public let rarity: String?
+        public let digital: Bool
+        public let games: [String]       // e.g. ["paper","mtgo"], ["arena"]
+
+        public var id: String { printingID }
+        /// Four-digit year of `releasedAt`, if present.
+        public var year: String? { releasedAt.map { String($0.prefix(4)) } }
+        /// A digital printing that exists only on Magic Online.
+        public var isMTGOOnly: Bool { digital && games == ["mtgo"] }
+        /// A digital printing that exists only on Arena.
+        public var isArenaOnly: Bool { digital && games == ["arena"] }
+
+        public init(printingID: String, oracleID: String?, setCode: String, setName: String,
+                    collectorNumber: String?, releasedAt: String?, rarity: String?,
+                    digital: Bool, games: [String]) {
+            self.printingID = printingID
+            self.oracleID = oracleID
+            self.setCode = setCode
+            self.setName = setName
+            self.collectorNumber = collectorNumber
+            self.releasedAt = releasedAt
+            self.rarity = rarity
+            self.digital = digital
+            self.games = games
+        }
+    }
+
+    /// A set and the IDs of the cards printed in it. Built by `CardStore.loadSetIndex()`
+    /// and consumed by `SearchEngine` so a set query expands to all its member cards.
+    public struct SetGroup: Sendable, Equatable {
+        public let code: String
+        public let name: String
+        public let memberIDs: [String]
+
+        public init(code: String, name: String, memberIDs: [String]) {
+            self.code = code
+            self.name = name
+            self.memberIDs = memberIDs
         }
     }
 }
