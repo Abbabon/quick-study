@@ -441,6 +441,110 @@ public final class CardStore {
         }
     }
 
+    // MARK: - Sets & Printings (fetcher writes; app reads)
+
+    public func setsCount() throws -> Int {
+        try dbQueue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sets") ?? 0 }
+    }
+
+    public func printingsCount() throws -> Int {
+        try dbQueue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM printings") ?? 0 }
+    }
+
+    public func upsertSets(_ sets: [SetInfo]) throws {
+        try dbQueue.write { db in
+            for s in sets {
+                try db.execute(sql: """
+                    INSERT INTO sets (code, name, released_at, set_type, card_count, icon_svg_uri)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(code) DO UPDATE SET
+                        name = excluded.name,
+                        released_at = excluded.released_at,
+                        set_type = excluded.set_type,
+                        card_count = excluded.card_count,
+                        icon_svg_uri = excluded.icon_svg_uri
+                """, arguments: [s.code, s.name, s.releasedAt, s.setType, s.cardCount, s.iconSVGURI])
+            }
+        }
+    }
+
+    public func upsertPrintings(_ printings: [Card.Printing]) throws {
+        try dbQueue.write { db in
+            for p in printings {
+                let gamesJSON = (try? String(data: JSONEncoder().encode(p.games), encoding: .utf8)) ?? "[]"
+                try db.execute(sql: """
+                    INSERT INTO printings (printing_id, oracle_id, set_code, set_name, collector_number, released_at, rarity, digital, games)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(printing_id) DO UPDATE SET
+                        oracle_id = excluded.oracle_id,
+                        set_code = excluded.set_code,
+                        set_name = excluded.set_name,
+                        collector_number = excluded.collector_number,
+                        released_at = excluded.released_at,
+                        rarity = excluded.rarity,
+                        digital = excluded.digital,
+                        games = excluded.games
+                """, arguments: [
+                    p.printingID, p.oracleID, p.setCode, p.setName, p.collectorNumber,
+                    p.releasedAt, p.rarity, p.digital ? 1 : 0, gamesJSON,
+                ])
+            }
+        }
+    }
+
+    /// All printings of a card, newest first. `digital`/`games` are decoded so the UI can
+    /// filter MTGO/Arena printings.
+    public func printings(forOracleID oracleID: String) throws -> [Card.Printing] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT printing_id, oracle_id, set_code, set_name, collector_number, released_at, rarity, digital, games
+                FROM printings WHERE oracle_id = ?
+                ORDER BY released_at DESC, set_code ASC
+                """, arguments: [oracleID])
+            let decoder = JSONDecoder()
+            return rows.map { row in
+                let gamesRaw: String = row["games"] ?? "[]"
+                let games = (try? decoder.decode([String].self, from: Data(gamesRaw.utf8))) ?? []
+                return Card.Printing(
+                    printingID: row["printing_id"], oracleID: row["oracle_id"],
+                    setCode: row["set_code"], setName: row["set_name"],
+                    collectorNumber: row["collector_number"], releasedAt: row["released_at"],
+                    rarity: row["rarity"], digital: (row["digital"] ?? 0) != 0, games: games)
+            }
+        }
+    }
+
+    /// Inverted index: each set with the IDs of cards printed in it. Joins `printings` to
+    /// `cards` by `oracle_id`, so only cards present in `cards` (the search corpus) appear.
+    /// Used by `SearchEngine` to expand a set query to all member cards.
+    public func loadSetIndex() throws -> [Card.SetGroup] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT p.set_code AS code, p.set_name AS name, c.id AS card_id
+                FROM printings p JOIN cards c ON c.oracle_id = p.oracle_id
+                """)
+            var order: [String] = []
+            var names: [String: String] = [:]
+            var members: [String: [String]] = [:]
+            var seen: [String: Set<String>] = [:]
+            for row in rows {
+                let code: String = row["code"]
+                let cardID: String = row["card_id"]
+                if members[code] == nil {
+                    order.append(code)
+                    members[code] = []
+                    seen[code] = []
+                    names[code] = row["name"]
+                }
+                if seen[code]?.contains(cardID) == false {
+                    members[code]?.append(cardID)
+                    seen[code]?.insert(cardID)
+                }
+            }
+            return order.map { Card.SetGroup(code: $0, name: names[$0] ?? $0, memberIDs: members[$0] ?? []) }
+        }
+    }
+
     // MARK: - Helpers
 
     /// UTC second-granularity timestamp for list created/updated stamps.
