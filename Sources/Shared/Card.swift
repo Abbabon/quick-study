@@ -152,6 +152,16 @@ public struct Card: Codable, Equatable, Sendable {
         public var isMTGOOnly: Bool { digital && games == ["mtgo"] }
         /// A digital printing that exists only on Arena.
         public var isArenaOnly: Bool { digital && games == ["arena"] }
+        /// Scryfall web page for this exact printing (`/card/{set}/{collector}`).
+        /// Falls back to the set's card list when the collector number is unknown.
+        public var scryfallURL: URL? {
+            let set = setCode.lowercased()
+            if let number = collectorNumber, !number.isEmpty,
+               let encoded = number.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
+                return URL(string: "https://scryfall.com/card/\(set)/\(encoded)")
+            }
+            return URL(string: "https://scryfall.com/sets/\(set)")
+        }
 
         public init(printingID: String, oracleID: String?, setCode: String, setName: String,
                     collectorNumber: String?, releasedAt: String?, rarity: String?,

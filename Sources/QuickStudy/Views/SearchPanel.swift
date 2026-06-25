@@ -173,7 +173,9 @@ struct SearchPanel: View {
                     }
                 },
                 printings: model.selectedPrintings,
-                onSetTap: { model.searchSet($0) }
+                onPrintingTap: { printing in
+                    if let url = printing.scryfallURL { NSWorkspace.shared.open(url) }
+                }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

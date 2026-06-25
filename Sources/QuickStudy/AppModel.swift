@@ -183,14 +183,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Fills the search field with a set's name and runs the search, so clicking a printing
-    /// jumps to "everything in that set". The set index makes the set-name query expand to
-    /// all member cards.
-    func searchSet(_ name: String) {
-        query = name
-        runSearch()
-    }
-
     /// Clears all transient search UI state so the next show is a fresh session.
     func resetSearchState() {
         query = ""

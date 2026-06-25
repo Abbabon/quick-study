@@ -14,8 +14,8 @@ struct CardPreview: View {
     var onAddToNewList: () -> Void = {}
     /// Printings of the previewed card (Scryfall-style list).
     var printings: [Card.Printing] = []
-    /// Called with a set name when the user taps a printing — drives "search this set".
-    var onSetTap: (String) -> Void = { _ in }
+    /// Called when the user taps a printing — opens that exact printing on Scryfall.
+    var onPrintingTap: (Card.Printing) -> Void = { _ in }
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
     @AppStorage("showMTGOPrintings") private var showMTGOPrintings: Bool = true
     @AppStorage("showArenaPrintings") private var showArenaPrintings: Bool = true
@@ -145,7 +145,7 @@ struct CardPreview: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(visiblePrintings) { p in
-                        Button { onSetTap(p.setName) } label: {
+                        Button { onPrintingTap(p) } label: {
                             HStack(spacing: scale.pad(6)) {
                                 Text(p.setName).font(scale.font(12)).lineLimit(1)
                                 Text("(\(p.setCode))").font(scale.font(11)).foregroundStyle(.secondary)
@@ -161,7 +161,7 @@ struct CardPreview: View {
                             .padding(.vertical, scale.pad(2))
                         }
                         .buttonStyle(.plain)
-                        .help("Search \(p.setName)")
+                        .help("Open \(p.setName) printing on Scryfall")
                     }
                 }
             }
