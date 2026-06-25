@@ -10,10 +10,31 @@ final class AppModel: ObservableObject {
     @Published var results: [Card.Mini] = []
     @Published var selectedID: String?
     @Published var selectedCard: Card?
+    /// Printings of the selected card, for the preview's Printings list. Loaded lazily on
+    /// selection from `CardStore.printings(forOracleID:)`.
+    @Published var selectedPrintings: [Card.Printing] = []
     @Published var pinned: [Card.Mini] = []
+    /// User-curated lists (durable, SQLite-backed). `activeListID` is the "current" list
+    /// for add-to-current and the one whose cards are shown expanded in the column.
+    @Published var lists: [CardList] = []
+    @Published var activeListID: String?
+    @Published var activeListCards: [Card.Mini] = []
+    /// Session toggle for the right-side Lists column, persisted like other UI prefs.
+    @Published var listsColumnVisible: Bool = UserDefaults.standard.bool(forKey: "showLists")
+    /// Set when a list should open in inline-rename mode (just-created lists). The column
+    /// clears it once it has taken focus.
+    @Published var renamingListID: String?
     @Published var recentlyAdded: [Card.Recent] = []
-    /// Session UI state for the Recently Added column (not persisted).
-    @Published var recentlyAddedExpanded: Bool = true
+    /// Open/closed state for the Recently Added column, persisted across launches.
+    /// Defaults to expanded for first-time users (no stored value yet).
+    @Published var recentlyAddedExpanded: Bool =
+        UserDefaults.standard.object(forKey: "showRecentlyAddedColumn") as? Bool ?? true
+    {
+        didSet {
+            UserDefaults.standard.set(recentlyAddedExpanded, forKey: "showRecentlyAddedColumn")
+            onRecentColumnChange?()
+        }
+    }
     /// The recent card currently shown via the column, driving the preview meta strip.
     @Published var selectedRecent: Card.Recent?
     @Published var refreshState: RefreshState = .idle
@@ -45,6 +66,14 @@ final class AppModel: ObservableObject {
     /// Invoked (on the main actor) whenever the pinned set changes, so the panel
     /// can resize to fit/free the pinned row without compromising the preview.
     var onPinnedChange: (() -> Void)?
+
+    /// Invoked (on the main actor) whenever the Lists column is shown/hidden, so the
+    /// panel can grow/shrink its width to fit the column (mirrors `onPinnedChange`).
+    var onListsColumnChange: (() -> Void)?
+
+    /// Invoked (on the main actor) whenever the Recently Added column is expanded/collapsed,
+    /// so the panel can grow/shrink its width to fit the column (mirrors `onListsColumnChange`).
+    var onRecentColumnChange: (() -> Void)?
 
     /// Invoked (on the main actor) to open the Settings window — wired by
     /// `AppDelegate` so the in-panel gear button can reach it without the menu bar.
@@ -92,6 +121,12 @@ final class AppModel: ObservableObject {
             case .none, .downloading, .installing, .failed: return false
             }
         }
+
+        /// True when a downloaded update is staged and only a relaunch is left.
+        var isReadyToRelaunch: Bool {
+            if case .readyToRelaunch = self { return true }
+            return false
+        }
     }
 
     private final class CachedCard { let card: Card; init(_ c: Card) { self.card = c } }
@@ -132,8 +167,9 @@ final class AppModel: ObservableObject {
                 dbState = .empty
             } else {
                 dbState = .ready
-                engine.load(try store.loadMinis())
+                engine.load(try store.loadMinis(), sets: (try? store.loadSetIndex()) ?? [])
                 recentlyAdded = (try? store.recentlyAdded()) ?? []
+                reloadLists()
             }
             refreshImageCacheSize()
             refreshArtworkState()
@@ -151,6 +187,7 @@ final class AppModel: ObservableObject {
             if selectedRecent == nil {
                 selectedID = nil
                 selectedCard = nil
+                selectedPrintings = []
             }
             return
         }
@@ -176,6 +213,7 @@ final class AppModel: ObservableObject {
         selectedID = nil
         selectedCard = nil
         selectedRecent = nil
+        selectedPrintings = []
     }
 
     /// Opens a card from the Recently Added column: selects it, records it for the
@@ -191,13 +229,22 @@ final class AppModel: ObservableObject {
         selectedID = id
         if let cached = detailCache.object(forKey: id as NSString) {
             selectedCard = cached.card
+            loadPrintings(for: cached.card)
             return
         }
         guard let store = store else { return }
         if let card = try? store.card(id: id) {
             selectedCard = card
             detailCache.setObject(CachedCard(card), forKey: id as NSString)
+            loadPrintings(for: card)
         }
+    }
+
+    /// Loads the selected card's printings (empty if it has no `oracleID`, e.g. ingested
+    /// before printings existed or before the first --printings refresh).
+    private func loadPrintings(for card: Card) {
+        guard let store = store, let oid = card.oracleID else { selectedPrintings = []; return }
+        selectedPrintings = (try? store.printings(forOracleID: oid)) ?? []
     }
 
     func selectNext() {
@@ -280,6 +327,112 @@ final class AppModel: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: Self.pinsDefaultsKey),
               let refs = try? JSONDecoder().decode([PinnedRef].self, from: data) else { return }
         pinned = refs.map { Card.Mini(id: $0.id, name: $0.name, identity: $0.identity) }
+    }
+
+    // MARK: - Lists
+
+    private static let activeListDefaultsKey = "activeListID"
+
+    /// Reloads lists from the store, restores/repairs the active selection, and refreshes
+    /// the active list's cards. Called on launch and after any mutation.
+    func reloadLists() {
+        guard let store = store else { return }
+        lists = (try? store.loadLists()) ?? []
+        // Restore the persisted active list on first load; drop it if it was deleted.
+        if activeListID == nil {
+            activeListID = UserDefaults.standard.string(forKey: Self.activeListDefaultsKey)
+        }
+        if let id = activeListID, !lists.contains(where: { $0.id == id }) {
+            activeListID = lists.first?.id
+        } else if activeListID == nil {
+            activeListID = lists.first?.id
+        }
+        persistActiveList()
+        reloadActiveListCards()
+    }
+
+    /// The currently active list, if any.
+    var activeList: CardList? {
+        lists.first { $0.id == activeListID }
+    }
+
+    func reloadActiveListCards() {
+        guard let store = store, let id = activeListID else { activeListCards = []; return }
+        activeListCards = (try? store.listItems(listID: id)) ?? []
+    }
+
+    func setActiveList(_ id: String?) {
+        activeListID = id
+        persistActiveList()
+        reloadActiveListCards()
+    }
+
+    private func persistActiveList() {
+        UserDefaults.standard.set(activeListID, forKey: Self.activeListDefaultsKey)
+    }
+
+    func toggleListsColumn() {
+        listsColumnVisible.toggle()
+        UserDefaults.standard.set(listsColumnVisible, forKey: "showLists")
+        onListsColumnChange?()
+    }
+
+    /// Creates a list, makes it active, and flags it for inline rename. Returns its id.
+    @discardableResult
+    func createList(named name: String = "New List") -> String? {
+        guard let store = store, let created = try? store.createList(name: name) else { return nil }
+        reloadLists()
+        setActiveList(created.id)
+        renamingListID = created.id
+        return created.id
+    }
+
+    func renameList(_ id: String, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let store = store, !trimmed.isEmpty else { return }
+        try? store.renameList(id: id, name: trimmed)
+        reloadLists()
+    }
+
+    func deleteList(_ id: String) {
+        guard let store = store else { return }
+        try? store.deleteList(id: id)
+        if activeListID == id { activeListID = nil }
+        reloadLists()
+    }
+
+    func addCard(_ cardID: String, toList listID: String) {
+        guard let store = store else { return }
+        try? store.addCard(cardID: cardID, toList: listID)
+        reloadLists()
+    }
+
+    /// Adds a card to the current (active) list, if one exists.
+    func addToCurrentList(_ cardID: String) {
+        guard let id = activeListID else { return }
+        addCard(cardID, toList: id)
+    }
+
+    /// Creates a fresh list containing just this card, makes it active, and flags it for
+    /// inline rename.
+    func addToNewList(_ cardID: String) {
+        guard let id = createList() else { return }
+        addCard(cardID, toList: id)
+    }
+
+    func removeCard(_ cardID: String, fromList listID: String) {
+        guard let store = store else { return }
+        try? store.removeCard(cardID: cardID, fromList: listID)
+        reloadLists()
+    }
+
+    /// Commits a drag-reorder of the active list's cards.
+    func moveCard(in listID: String, fromOffsets source: IndexSet, toOffset destination: Int) {
+        guard let store = store else { return }
+        var ordered = activeListCards
+        ordered.move(fromOffsets: source, toOffset: destination)
+        activeListCards = ordered   // optimistic UI update
+        try? store.setListOrder(listID: listID, orderedCardIDs: ordered.map(\.id))
     }
 
     // MARK: - Image cache
@@ -572,7 +725,7 @@ final class AppModel: ObservableObject {
         guard case .idle = refreshState, !backgroundSyncing else { return }
         refreshState = .running(phase: "starting", done: 0, total: 0)
         Task { [weak self] in
-            await self?.fetcher.run(mode: skipImages ? .ingestOnly : .full) { event in
+            await self?.fetcher.run(mode: skipImages ? .ingestPrintings : .full) { event in
                 Task { @MainActor [weak self] in
                     self?.applyFetcherEvent(event)
                 }

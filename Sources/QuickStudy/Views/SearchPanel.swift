@@ -24,6 +24,11 @@ struct SearchPanel: View {
                     Divider().opacity(0.5)
                 }
                 content
+                if model.dbState == .ready && model.listsColumnVisible {
+                    Divider().opacity(0.5)
+                    ListsColumn(model: model)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
             if model.dbState == .ready && !model.pinned.isEmpty {
                 Divider().opacity(0.3)
@@ -33,6 +38,7 @@ struct SearchPanel: View {
         .frame(minWidth: scale.size(860), minHeight: scale.size(520))
         .animation(reduceMotion ? nil : DS.Motion.resize, value: model.recentlyAddedExpanded)
         .animation(reduceMotion ? nil : DS.Motion.resize, value: model.showsRecentColumn)
+        .animation(reduceMotion ? nil : DS.Motion.resize, value: model.listsColumnVisible)
         .tint(DS.accent)
         .onAppear { searchFocused = true }
         .onExitCommand(perform: onDismiss)
@@ -67,6 +73,21 @@ struct SearchPanel: View {
                 .onSubmit { handleEnter() }
                 .onKeyPress(.upArrow) { model.selectPrev(); return .handled }
                 .onKeyPress(.downArrow) { model.selectNext(); return .handled }
+            if model.dbState == .ready {
+                Button {
+                    withAnimation(reduceMotion ? nil : DS.Motion.resize) {
+                        model.toggleListsColumn()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.trailing")
+                        .font(scale.font(18))
+                        .foregroundStyle(model.listsColumnVisible ? DS.accent : Color.secondary)
+                        .frame(width: scale.size(30), height: scale.size(30))
+                        .contentShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
+                }
+                .buttonStyle(.plain)
+                .help(model.listsColumnVisible ? "Hide Lists" : "Show Lists")
+            }
             Button {
                 model.onOpenGame?()
             } label: {
@@ -140,7 +161,21 @@ struct SearchPanel: View {
             CardPreview(
                 card: model.selectedCard,
                 isPinned: model.selectedCard.map { model.isPinned($0.id) } ?? false,
-                onTogglePin: { model.togglePinSelected() }
+                onTogglePin: { model.togglePinSelected() },
+                lists: model.lists,
+                onAddToList: { listID in
+                    if let id = model.selectedCard?.id { model.addCard(id, toList: listID) }
+                },
+                onAddToNewList: {
+                    if let id = model.selectedCard?.id {
+                        model.addToNewList(id)
+                        if !model.listsColumnVisible { model.toggleListsColumn() }
+                    }
+                },
+                printings: model.selectedPrintings,
+                onPrintingTap: { printing in
+                    if let url = printing.scryfallURL { NSWorkspace.shared.open(url) }
+                }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

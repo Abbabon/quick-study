@@ -10,7 +10,7 @@ struct ResultList: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(model.results, id: \.id) { mini in
-                        Row(mini: mini, selected: mini.id == model.selectedID) {
+                        Row(model: model, mini: mini, selected: mini.id == model.selectedID) {
                             model.select(mini.id)
                         }
                         .id(mini.id)
@@ -29,6 +29,7 @@ struct ResultList: View {
     }
 
     private struct Row: View {
+        @ObservedObject var model: AppModel
         let mini: Card.Mini
         let selected: Bool
         let onTap: () -> Void
@@ -52,6 +53,17 @@ struct ResultList: View {
             )
             .contentShape(Rectangle())
             .onTapGesture(perform: onTap)
+            .contextMenu {
+                ForEach(model.lists) { list in
+                    Button("Add to \(list.name)") { model.addCard(mini.id, toList: list.id) }
+                }
+                Button("Add to new list…") {
+                    model.addToNewList(mini.id)
+                    if !model.listsColumnVisible { model.toggleListsColumn() }
+                }
+                Divider()
+                Button(model.isPinned(mini.id) ? "Unpin" : "Pin") { model.togglePin(mini) }
+            }
         }
     }
 }

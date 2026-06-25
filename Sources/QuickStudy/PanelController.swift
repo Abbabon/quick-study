@@ -9,10 +9,17 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var lastHiddenAt: Date?
     private let model: AppModel
 
+    /// Set while a floating companion window (the hovering Settings window) is open, so the
+    /// panel does not auto-dismiss when that window takes key focus — the two hover together.
+    /// `AppDelegate` flips this on when opening Settings and off when it closes.
+    var companionWindowActive = false
+
     init(model: AppModel) {
         self.model = model
         super.init()
         model.onPinnedChange = { [weak self] in self?.adjustPanelForPins() }
+        model.onListsColumnChange = { [weak self] in self?.adjustPanelWidth() }
+        model.onRecentColumnChange = { [weak self] in self?.adjustPanelWidth() }
     }
 
     /// Extra height reserved at the bottom for the pinned row. Sized a touch
@@ -21,8 +28,21 @@ final class PanelController: NSObject, NSWindowDelegate {
         model.pinned.isEmpty ? 0 : scale.size(124)
     }
 
+    /// Extra width reserved on the right for the Lists column (matches the column's
+    /// 252pt frame plus its divider), so showing it never squeezes the preview.
+    private func listsBandWidth(_ scale: UIScale) -> CGFloat {
+        model.listsColumnVisible ? scale.size(253) : 0
+    }
+
+    /// Extra width reserved on the left for the Recently Added column (its 222pt frame
+    /// plus its divider), so expanding it never squeezes the preview. Mirrors `listsBandWidth`.
+    private func recentBandWidth(_ scale: UIScale) -> CGFloat {
+        (model.showsRecentColumn && model.recentlyAddedExpanded) ? scale.size(223) : 0
+    }
+
     private func panelSize(scale: UIScale) -> NSSize {
-        NSSize(width: scale.size(900), height: scale.size(560) + pinnedBandHeight(scale))
+        NSSize(width: scale.size(900) + listsBandWidth(scale) + recentBandWidth(scale),
+               height: scale.size(560) + pinnedBandHeight(scale))
     }
 
     /// Grows/shrinks the live panel downward (top edge fixed) when the pinned
@@ -37,6 +57,22 @@ final class PanelController: NSObject, NSWindowDelegate {
         if let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame {
             origin.y = min(max(origin.y, visible.minY), visible.maxY - target.height)
             origin.x = min(max(origin.x, visible.minX), visible.maxX - target.width)
+        }
+        panel.setFrame(NSRect(origin: origin, size: target), display: true, animate: true)
+    }
+
+    /// Grows/shrinks the live panel horizontally when a side column (Lists or Recently
+    /// Added) is toggled, keeping the panel's center fixed and clamping to the active screen.
+    private func adjustPanelWidth() {
+        guard let panel = panel else { return }
+        let target = panelSize(scale: UIScale(value: panelScale))
+        let current = panel.frame
+        guard abs(current.width - target.width) > 0.5 else { return }
+        let centerX = current.midX
+        var origin = NSPoint(x: centerX - target.width / 2, y: current.maxY - target.height)
+        if let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame {
+            origin.x = min(max(origin.x, visible.minX), visible.maxX - target.width)
+            origin.y = min(max(origin.y, visible.minY), visible.maxY - target.height)
         }
         panel.setFrame(NSRect(origin: origin, size: target), display: true, animate: true)
     }
@@ -62,8 +98,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard let panel = panel else { return }
         clearSearchIfTimedOut()
         centerOnActiveScreen(panel)
-        panel.makeKeyAndOrderFront(nil)
+        // Activate FIRST, then order the panel key/front LAST. As a `.regular` Dock app,
+        // `NSApp.activate` performs a full app activation that surfaces another of our
+        // windows (e.g. the closed-but-not-released Settings window). If we order the panel
+        // front before activating, that surfaced window steals key focus from the panel and
+        // `windowDidResignKey` immediately dismisses it — so the hotkey appears to do nothing
+        // when the app isn't already frontmost. Ordering the panel front after activation
+        // makes it the last (and therefore key) window.
         NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
     }
 
     func hide() {
@@ -135,7 +178,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     func windowDidResignKey(_ notification: Notification) {
-        // Auto-dismiss when the user clicks elsewhere.
+        // Stay open while a floating companion window (Settings) is up, so the two hover
+        // together. Otherwise auto-dismiss when the user clicks elsewhere. Leaving the app
+        // entirely is still handled separately by `hidesOnDeactivate`.
+        if companionWindowActive { return }
         hide()
     }
 }

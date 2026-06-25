@@ -154,6 +154,7 @@ private struct ScryfallCard: Decodable {
     let released_at: String?
     let set: String?
     let set_name: String?
+    let oracle_id: String?
     let preview: Preview?
 
     struct Preview: Decodable {
@@ -220,6 +221,7 @@ private struct ScryfallCard: Decodable {
             scryfallURI: scryfallPage,
             setCode: set?.uppercased(),
             setName: set_name,
+            oracleID: oracle_id,
             // "Date added to Scryfall": prefer the preview/spoiler date (when present),
             // fall back to the set release date, then today (rare, no dates at all).
             dateAdded: preview?.previewed_at ?? released_at ?? Self.todayString
@@ -283,5 +285,78 @@ public extension ScryfallClient {
             }
         }
         return refs
+    }
+}
+
+// MARK: - Scryfall raw JSON shape (default_cards printing)
+
+/// Minimal projection of a Scryfall card object as it appears in the `default_cards`
+/// bulk file — one row per printing (card+set).
+private struct ScryfallPrinting: Decodable {
+    let id: String
+    let oracle_id: String?
+    let set: String
+    let set_name: String
+    let collector_number: String?
+    let released_at: String?
+    let rarity: String?
+    let digital: Bool?
+    let games: [String]?
+    let lang: String?
+    let layout: String?
+
+    func toPrinting() -> Card.Printing? {
+        // Skip the same junk layouts as the card ingest.
+        if let l = layout, ["token", "double_faced_token", "art_series", "emblem"].contains(l) {
+            return nil
+        }
+        // English only — default_cards still carries some non-English rows; filtering keeps
+        // one printing per set instead of one per language.
+        if let lang, lang != "en" { return nil }
+        // No oracle_id ⇒ can't link to a card (rare split/reversible rows); skip.
+        guard let oracle_id else { return nil }
+        return Card.Printing(
+            printingID: id, oracleID: oracle_id,
+            setCode: set.uppercased(), setName: set_name,
+            collectorNumber: collector_number, releasedAt: released_at, rarity: rarity,
+            digital: digital ?? false, games: games ?? [])
+    }
+}
+
+// MARK: - Scryfall raw JSON shape (/sets)
+
+private struct ScryfallSet: Decodable {
+    let code: String
+    let name: String
+    let released_at: String?
+    let set_type: String?
+    let card_count: Int?
+    let icon_svg_uri: String?
+}
+
+private struct ScryfallSetList: Decodable { let data: [ScryfallSet] }
+
+public extension ScryfallClient {
+    /// Decode the `default_cards` bulk JSON into `Card.Printing` records, filtered to English
+    /// non-token printings with an oracle_id. Whole-file decode like `parseBulk`; the fetcher
+    /// is a short-lived process so transient memory for the ~150 MB blob is acceptable.
+    func parsePrintings(at url: URL) throws -> [Card.Printing] {
+        let data = try Data(contentsOf: url)
+        let raws = try JSONDecoder().decode([ScryfallPrinting].self, from: data)
+        return raws.compactMap { $0.toPrinting() }
+    }
+
+    /// Fetches the full set catalog from `https://api.scryfall.com/sets`.
+    func fetchSets() async throws -> [SetInfo] {
+        var request = URLRequest(url: URL(string: "https://api.scryfall.com/sets")!)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("QuickStudy/1.0 (+https://github.com/Abbabon/quick-study)",
+                         forHTTPHeaderField: "User-Agent")
+        let (data, _) = try await session.data(for: request)
+        let list = try JSONDecoder().decode(ScryfallSetList.self, from: data)
+        return list.data.map {
+            SetInfo(code: $0.code.uppercased(), name: $0.name, releasedAt: $0.released_at,
+                    setType: $0.set_type, cardCount: $0.card_count, iconSVGURI: $0.icon_svg_uri)
+        }
     }
 }

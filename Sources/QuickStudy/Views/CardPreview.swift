@@ -6,7 +6,19 @@ struct CardPreview: View {
     let card: Card?
     var isPinned: Bool = false
     var onTogglePin: () -> Void = {}
+    /// Existing lists offered in the "Add to list" menu.
+    var lists: [CardList] = []
+    /// Adds the previewed card to an existing list (by id).
+    var onAddToList: (String) -> Void = { _ in }
+    /// Adds the previewed card to a freshly-created list.
+    var onAddToNewList: () -> Void = {}
+    /// Printings of the previewed card (Scryfall-style list).
+    var printings: [Card.Printing] = []
+    /// Called when the user taps a printing — opens that exact printing on Scryfall.
+    var onPrintingTap: (Card.Printing) -> Void = { _ in }
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
+    @AppStorage("showMTGOPrintings") private var showMTGOPrintings: Bool = true
+    @AppStorage("showArenaPrintings") private var showArenaPrintings: Bool = true
 
     var body: some View {
         let scale = UIScale(value: uiScaleValue)
@@ -40,6 +52,9 @@ struct CardPreview: View {
                 if let p = card.power, let t = card.toughness {
                     Text("\(p) / \(t)").font(scale.font(11)).foregroundStyle(.secondary)
                 }
+                if !visiblePrintings.isEmpty {
+                    printingsSection(scale: scale)
+                }
                 Spacer()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -67,6 +82,7 @@ struct CardPreview: View {
                         ManaCostView(cost: cost, size: scale.size(16))
                     }
                     Spacer(minLength: scale.pad(8))
+                    addToListMenu(scale: scale)
                     pinButton(scale: scale)
                 }
             }
@@ -78,7 +94,26 @@ struct CardPreview: View {
         if let cost = card.manaCost, !cost.isEmpty {
             ManaCostView(cost: cost, size: scale.size(16))
         }
+        addToListMenu(scale: scale)
         pinButton(scale: scale)
+    }
+
+    private func addToListMenu(scale: UIScale) -> some View {
+        Menu {
+            ForEach(lists) { list in
+                Button("Add to \(list.name)") { onAddToList(list.id) }
+            }
+            if !lists.isEmpty { Divider() }
+            Button("New list…") { onAddToNewList() }
+        } label: {
+            Image(systemName: "text.badge.plus")
+                .font(scale.font(14, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Add to list")
     }
 
     private func pinButton(scale: UIScale) -> some View {
@@ -90,6 +125,49 @@ struct CardPreview: View {
         .buttonStyle(.plain)
         .keyboardShortcut("p", modifiers: .command)
         .help(isPinned ? "Unpin (⌘P)" : "Pin (⌘P)")
+    }
+
+    /// Printings minus the digital platforms the user has hidden in Settings.
+    private var visiblePrintings: [Card.Printing] {
+        printings.filter { p in
+            if p.isMTGOOnly && !showMTGOPrintings { return false }
+            if p.isArenaOnly && !showArenaPrintings { return false }
+            return true
+        }
+    }
+
+    @ViewBuilder
+    private func printingsSection(scale: UIScale) -> some View {
+        VStack(alignment: .leading, spacing: scale.pad(4)) {
+            Text("Printings (\(visiblePrintings.count))")
+                .font(scale.font(11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(visiblePrintings) { p in
+                        Button { onPrintingTap(p) } label: {
+                            HStack(spacing: scale.pad(6)) {
+                                Text(p.setName).font(scale.font(12)).lineLimit(1)
+                                Text("(\(p.setCode))").font(scale.font(11)).foregroundStyle(.secondary)
+                                Spacer(minLength: scale.pad(4))
+                                if let y = p.year {
+                                    Text(y).font(scale.font(11)).foregroundStyle(.tertiary)
+                                }
+                                if let r = p.rarity, !r.isEmpty {
+                                    Text(r.capitalized).font(scale.font(10)).foregroundStyle(.tertiary)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .padding(.vertical, scale.pad(2))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open \(p.setName) printing on Scryfall")
+                    }
+                }
+            }
+            .frame(maxHeight: scale.size(150))
+        }
+        .padding(.top, scale.pad(4))
     }
 
     @ViewBuilder

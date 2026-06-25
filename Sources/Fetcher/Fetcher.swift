@@ -9,9 +9,10 @@ struct FetcherMain {
         let skipImages = args.contains("--no-images")
         let artwork = args.contains("--artwork")
         let downloadArt = args.contains("--download-art")
+        let printings = args.contains("--printings")
 
         let emitter = ProgressEmitter(logURL: Paths.fetcherLogURL)
-        emitter.emit(phase: "start", message: "mtg-fetcher starting (imagesOnly=\(imagesOnly) skipImages=\(skipImages) artwork=\(artwork) downloadArt=\(downloadArt))")
+        emitter.emit(phase: "start", message: "mtg-fetcher starting (imagesOnly=\(imagesOnly) skipImages=\(skipImages) artwork=\(artwork) downloadArt=\(downloadArt) printings=\(printings))")
 
         do {
             let store = try CardStore()
@@ -91,9 +92,45 @@ struct FetcherMain {
             }
             try store.setMeta("last_refresh", ISO8601DateFormatter().string(from: Date()))
             try store.setMeta("bulk_updated_at", info.updated_at)
-            // The fetcher never deletes cards, so the row-count delta is the number
-            // of brand-new cards this ingest added.
+            // Row-count delta after upsert (before reconcile) is the number of brand-new
+            // cards this ingest added — reconcile only removes rows that were already stale.
             let newCards = max(0, try store.count() - countBefore)
+
+            // Reconcile: drop rows this complete ingest no longer produces (orphans from a
+            // changed representative printing id; junk layouts an older fetcher ingested).
+            // Safe only because we have the full, successfully-parsed id set in hand.
+            let removed = try store.reconcileCards(keepingIDs: Set(cards.map(\.id)))
+            if removed > 0 {
+                emitter.emit(phase: "ingest", done: cards.count, total: cards.count,
+                             message: "removed \(removed) stale cards")
+            }
+
+            // Sets catalog + per-card printings (manual refresh only; gated by --printings).
+            if printings {
+                emitter.emit(phase: "sets", message: "fetching set catalog")
+                let sets = try await client.fetchSets()
+                try store.upsertSets(sets)
+                emitter.emit(phase: "sets", done: sets.count, total: sets.count)
+
+                let defaultBulkURL = Paths.supportDir.appendingPathComponent("bulk-default.json", isDirectory: false)
+                emitter.emit(phase: "printings", message: "fetching default_cards bulk index")
+                let pInfo = try await client.bulkInfo(type: "default_cards")
+                // Re-download only when the file is missing or Scryfall's stamp moved.
+                let storedStamp = try store.meta("printings_updated_at")
+                if !FileManager.default.fileExists(atPath: defaultBulkURL.path) || storedStamp != pInfo.updated_at {
+                    try await client.downloadBulkJSON(from: pInfo, to: defaultBulkURL)
+                }
+                emitter.emit(phase: "printings", message: "parsing printings")
+                let prints = try client.parsePrintings(at: defaultBulkURL)
+                emitter.emit(phase: "printings", done: 0, total: prints.count)
+                var pDone = 0
+                for batch in prints.chunked(into: 1000) {
+                    try store.upsertPrintings(batch)
+                    pDone += batch.count
+                    emitter.emit(phase: "printings", done: pDone, total: prints.count)
+                }
+                try store.setMeta("printings_updated_at", pInfo.updated_at)
+            }
 
             // 4. Image download (unless --no-images)
             if skipImages {

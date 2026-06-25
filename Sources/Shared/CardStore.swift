@@ -79,6 +79,61 @@ public final class CardStore {
                 t.column("set_code", .text)
             }
         }
+        m.registerMigration("v5") { db in
+            // User-curated card collections. `card_lists` is the named list; membership
+            // lives in `card_list_items` (many-to-many, ordered by `position`). Populated
+            // and edited only by the app — the fetcher never touches these.
+            try db.create(table: "card_lists") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("name_lower", .text).notNull()
+                t.column("created_at", .text).notNull()
+                t.column("updated_at", .text).notNull()
+            }
+            try db.create(table: "card_list_items") { t in
+                t.column("list_id", .text).notNull().indexed()
+                t.column("card_id", .text).notNull()
+                t.column("position", .integer).notNull()
+                t.column("added_at", .text).notNull()
+                t.primaryKey(["list_id", "card_id"])
+            }
+        }
+        m.registerMigration("v6") { db in
+            // `oracle_id` = the stable Scryfall oracle identity, the join key from `cards`
+            // to `printings`. Backfilled by the next ingest (oracle_cards carries it);
+            // NULL until then, so set search is simply empty before the first --printings run.
+            try db.alter(table: "cards") { t in
+                t.add(column: "oracle_id", .text).indexed()
+            }
+        }
+        m.registerMigration("v7") { db in
+            // Set catalog ("set markings"). `icon_svg_uri` is stored for future symbol
+            // rendering; the UI shows set codes as text for now. Populated by the fetcher.
+            try db.create(table: "sets") { t in
+                t.column("code", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("released_at", .text)
+                t.column("set_type", .text)
+                t.column("card_count", .integer)
+                t.column("icon_svg_uri", .text)
+            }
+        }
+        m.registerMigration("v8") { db in
+            // One row per printing (card+set), from Scryfall's default_cards bulk. Linked
+            // to `cards` by `oracle_id`. `digital`/`games` drive the MTGO/Arena display
+            // toggles. `printing_id` is reserved for a future per-version image download.
+            try db.create(table: "printings") { t in
+                t.column("printing_id", .text).primaryKey()
+                t.column("oracle_id", .text).indexed()
+                t.column("set_code", .text).notNull()
+                t.column("set_name", .text).notNull()
+                t.column("collector_number", .text)
+                t.column("released_at", .text)
+                t.column("rarity", .text)
+                t.column("digital", .integer).notNull().defaults(to: 0)
+                t.column("games", .text).notNull().defaults(to: "[]")
+            }
+        }
         return m
     }
 
@@ -194,8 +249,8 @@ public final class CardStore {
                 let colorsJSON = (try? String(data: JSONEncoder().encode(c.colors), encoding: .utf8)) ?? "[]"
                 let firstSeen = (c.dateAdded.map { $0 < today ? $0 : today }) ?? today
                 try db.execute(sql: """
-                    INSERT INTO cards (id, name, name_lower, mana_cost, type_line, oracle_text, power, toughness, colors, image_path, scryfall_uri, set_code, set_name, date_added, first_seen)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO cards (id, name, name_lower, mana_cost, type_line, oracle_text, power, toughness, colors, image_path, scryfall_uri, oracle_id, set_code, set_name, date_added, first_seen)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         name = excluded.name,
                         name_lower = excluded.name_lower,
@@ -206,6 +261,7 @@ public final class CardStore {
                         toughness = excluded.toughness,
                         colors = excluded.colors,
                         scryfall_uri = excluded.scryfall_uri,
+                        oracle_id = excluded.oracle_id,
                         set_code = excluded.set_code,
                         set_name = excluded.set_name,
                         -- Keep the EARLIEST date Scryfall reports for this card: when a
@@ -223,9 +279,70 @@ public final class CardStore {
                     colorsJSON,
                     c.imagePath,
                     c.scryfallURI,
+                    c.oracleID,
                     c.setCode, c.setName, c.dateAdded, firstSeen,
                 ])
             }
+        }
+    }
+
+    /// Removes `cards` rows the latest ingest no longer produces and returns how many
+    /// were deleted. Two kinds of staleness accumulate because `upsert` is additive
+    /// (`ON CONFLICT(id) DO UPDATE`, never deleting): orphans left behind when Scryfall
+    /// changes an oracle card's representative printing `id` between refreshes, and junk
+    /// layouts (tokens/emblems) an older fetcher ingested before `toCard()` filtered them.
+    /// Both linger with NULL oracle_id, surfacing in search with no image/set/printings.
+    ///
+    /// Before deleting a stale row a list references, the list entry is remapped onto a
+    /// surviving same-name card so a representative-id change doesn't silently drop a card
+    /// from a wishlist/deck. Entries whose card is genuinely gone (no survivor) are removed.
+    ///
+    /// MUST be called only after a COMPLETE oracle ingest, with `keep` = the full set of
+    /// ids just upserted. A partial/failed ingest would otherwise delete valid cards.
+    @discardableResult
+    public func reconcileCards(keepingIDs keep: Set<String>) throws -> Int {
+        try dbQueue.write { db in
+            let staleIDs = try String.fetchAll(db, sql: "SELECT id FROM cards")
+                .filter { !keep.contains($0) }
+            guard !staleIDs.isEmpty else { return 0 }
+            let stale = Set(staleIDs)
+
+            // Remap list entries off each stale row onto a surviving same-name card.
+            for staleID in staleIDs {
+                let listIDs = try String.fetchAll(db,
+                    sql: "SELECT list_id FROM card_list_items WHERE card_id = ?",
+                    arguments: [staleID])
+                guard !listIDs.isEmpty,
+                      let name = try String.fetchOne(db,
+                          sql: "SELECT name FROM cards WHERE id = ?", arguments: [staleID])
+                else { continue }
+                // Same-name candidates, narrowed to ids the current ingest kept.
+                let candidates = try String.fetchAll(db,
+                    sql: "SELECT id FROM cards WHERE name = ? AND id <> ? ORDER BY id",
+                    arguments: [name, staleID])
+                guard let survivorID = candidates.first(where: { keep.contains($0) && !stale.contains($0) })
+                else { continue }   // no survivor → leave; row delete drops the dangling item below
+                for listID in listIDs {
+                    // OR IGNORE: if the survivor is already in this list, drop the stale
+                    // entry instead of colliding on the (list_id, card_id) primary key.
+                    try db.execute(sql: """
+                        UPDATE OR IGNORE card_list_items SET card_id = ? WHERE list_id = ? AND card_id = ?
+                        """, arguments: [survivorID, listID, staleID])
+                }
+            }
+
+            // Delete the stale cards and any list entries still pointing at them (the
+            // remapped ones moved off staleIDs above, so only no-survivor leftovers match).
+            // Chunk the IN-clauses to stay under SQLite's bound-variable limit.
+            for start in stride(from: 0, to: staleIDs.count, by: 500) {
+                let chunk = Array(staleIDs[start..<min(start + 500, staleIDs.count)])
+                let placeholders = databaseQuestionMarks(count: chunk.count)
+                try db.execute(sql: "DELETE FROM card_list_items WHERE card_id IN (\(placeholders))",
+                               arguments: StatementArguments(chunk))
+                try db.execute(sql: "DELETE FROM cards WHERE id IN (\(placeholders))",
+                               arguments: StatementArguments(chunk))
+            }
+            return staleIDs.count
         }
     }
 
@@ -272,7 +389,237 @@ public final class CardStore {
         }
     }
 
+    // MARK: - Lists
+
+    /// Creates an empty list and returns it. `name` is stored as-is; `name_lower` backs
+    /// case-insensitive lookups/sorting later if needed.
+    public func createList(name: String) throws -> CardList {
+        let id = UUID().uuidString
+        let now = Self.timestamp()
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT INTO card_lists (id, name, name_lower, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """, arguments: [id, name, name.lowercased(), now, now])
+        }
+        return CardList(id: id, name: name, createdAt: now, updatedAt: now, itemCount: 0)
+    }
+
+    /// All lists, oldest first, each with its current card count.
+    public func loadLists() throws -> [CardList] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT l.id, l.name, l.created_at, l.updated_at,
+                       (SELECT COUNT(*) FROM card_list_items i WHERE i.list_id = l.id) AS item_count
+                FROM card_lists l
+                ORDER BY l.created_at ASC, l.name ASC
+                """)
+            return rows.map { row in
+                CardList(id: row["id"], name: row["name"],
+                         createdAt: row["created_at"], updatedAt: row["updated_at"],
+                         itemCount: row["item_count"] ?? 0)
+            }
+        }
+    }
+
+    public func renameList(id: String, name: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                UPDATE card_lists SET name = ?, name_lower = ?, updated_at = ? WHERE id = ?
+                """, arguments: [name, name.lowercased(), Self.timestamp(), id])
+        }
+    }
+
+    /// Deletes a list and all its membership rows in one transaction (cascade-in-code,
+    /// since `PRAGMA foreign_keys` is left off globally).
+    public func deleteList(id: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM card_list_items WHERE list_id = ?", arguments: [id])
+            try db.execute(sql: "DELETE FROM card_lists WHERE id = ?", arguments: [id])
+        }
+    }
+
+    /// Appends a card to a list. No-op if the card is already a member (the composite
+    /// primary key makes the insert idempotent). Bumps the list's `updated_at`.
+    public func addCard(cardID: String, toList listID: String) throws {
+        try dbQueue.write { db in
+            let nextPosition = try Int.fetchOne(db,
+                sql: "SELECT COALESCE(MAX(position), -1) + 1 FROM card_list_items WHERE list_id = ?",
+                arguments: [listID]) ?? 0
+            try db.execute(sql: """
+                INSERT INTO card_list_items (list_id, card_id, position, added_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(list_id, card_id) DO NOTHING
+                """, arguments: [listID, cardID, nextPosition, Self.timestamp()])
+            try db.execute(sql: "UPDATE card_lists SET updated_at = ? WHERE id = ?",
+                           arguments: [Self.timestamp(), listID])
+        }
+    }
+
+    public func removeCard(cardID: String, fromList listID: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM card_list_items WHERE list_id = ? AND card_id = ?",
+                           arguments: [listID, cardID])
+            try db.execute(sql: "UPDATE card_lists SET updated_at = ? WHERE id = ?",
+                           arguments: [Self.timestamp(), listID])
+        }
+    }
+
+    /// Cards in a list as `Card.Mini`s, ordered by `position`. Joins `cards` so identity /
+    /// set metadata is populated exactly like `loadMinis()`. Items whose card is missing
+    /// from `cards` (e.g. removed in a later bulk) are skipped.
+    public func listItems(listID: String) throws -> [Card.Mini] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT c.id, c.name, c.colors, c.set_code, c.set_name
+                FROM card_list_items i
+                JOIN cards c ON c.id = i.card_id
+                WHERE i.list_id = ?
+                ORDER BY i.position ASC
+                """, arguments: [listID])
+            let decoder = JSONDecoder()
+            return rows.map { row in
+                let colorsRaw: String = row["colors"] ?? "[]"
+                let colors = (try? decoder.decode([String].self, from: Data(colorsRaw.utf8))) ?? []
+                return Card.Mini(id: row["id"], name: row["name"], colors: colors,
+                                 setCode: row["set_code"], setName: row["set_name"])
+            }
+        }
+    }
+
+    /// Rewrites positions to match `orderedCardIDs` (e.g. after a drag-reorder). IDs not
+    /// already in the list are ignored.
+    public func setListOrder(listID: String, orderedCardIDs: [String]) throws {
+        try dbQueue.write { db in
+            for (index, cardID) in orderedCardIDs.enumerated() {
+                try db.execute(sql: """
+                    UPDATE card_list_items SET position = ? WHERE list_id = ? AND card_id = ?
+                    """, arguments: [index, listID, cardID])
+            }
+            try db.execute(sql: "UPDATE card_lists SET updated_at = ? WHERE id = ?",
+                           arguments: [Self.timestamp(), listID])
+        }
+    }
+
+    // MARK: - Sets & Printings (fetcher writes; app reads)
+
+    public func setsCount() throws -> Int {
+        try dbQueue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sets") ?? 0 }
+    }
+
+    public func printingsCount() throws -> Int {
+        try dbQueue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM printings") ?? 0 }
+    }
+
+    public func upsertSets(_ sets: [SetInfo]) throws {
+        try dbQueue.write { db in
+            for s in sets {
+                try db.execute(sql: """
+                    INSERT INTO sets (code, name, released_at, set_type, card_count, icon_svg_uri)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(code) DO UPDATE SET
+                        name = excluded.name,
+                        released_at = excluded.released_at,
+                        set_type = excluded.set_type,
+                        card_count = excluded.card_count,
+                        icon_svg_uri = excluded.icon_svg_uri
+                """, arguments: [s.code, s.name, s.releasedAt, s.setType, s.cardCount, s.iconSVGURI])
+            }
+        }
+    }
+
+    public func upsertPrintings(_ printings: [Card.Printing]) throws {
+        try dbQueue.write { db in
+            for p in printings {
+                let gamesJSON = (try? String(data: JSONEncoder().encode(p.games), encoding: .utf8)) ?? "[]"
+                try db.execute(sql: """
+                    INSERT INTO printings (printing_id, oracle_id, set_code, set_name, collector_number, released_at, rarity, digital, games)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(printing_id) DO UPDATE SET
+                        oracle_id = excluded.oracle_id,
+                        set_code = excluded.set_code,
+                        set_name = excluded.set_name,
+                        collector_number = excluded.collector_number,
+                        released_at = excluded.released_at,
+                        rarity = excluded.rarity,
+                        digital = excluded.digital,
+                        games = excluded.games
+                """, arguments: [
+                    p.printingID, p.oracleID, p.setCode, p.setName, p.collectorNumber,
+                    p.releasedAt, p.rarity, p.digital ? 1 : 0, gamesJSON,
+                ])
+            }
+        }
+    }
+
+    /// All printings of a card, newest first. `digital`/`games` are decoded so the UI can
+    /// filter MTGO/Arena printings.
+    public func printings(forOracleID oracleID: String) throws -> [Card.Printing] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT printing_id, oracle_id, set_code, set_name, collector_number, released_at, rarity, digital, games
+                FROM printings WHERE oracle_id = ?
+                ORDER BY released_at DESC, set_code ASC
+                """, arguments: [oracleID])
+            let decoder = JSONDecoder()
+            return rows.map { row in
+                let gamesRaw: String = row["games"] ?? "[]"
+                let games = (try? decoder.decode([String].self, from: Data(gamesRaw.utf8))) ?? []
+                return Card.Printing(
+                    printingID: row["printing_id"], oracleID: row["oracle_id"],
+                    setCode: row["set_code"], setName: row["set_name"],
+                    collectorNumber: row["collector_number"], releasedAt: row["released_at"],
+                    rarity: row["rarity"], digital: (row["digital"] ?? 0) != 0, games: games)
+            }
+        }
+    }
+
+    /// Inverted index: each set with the IDs of cards printed in it. Joins `printings` to
+    /// `cards` by `oracle_id`, so only cards present in `cards` (the search corpus) appear.
+    /// Used by `SearchEngine` to expand a set query to all member cards.
+    public func loadSetIndex() throws -> [Card.SetGroup] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT p.set_code AS code, p.set_name AS name, c.id AS card_id
+                FROM printings p JOIN cards c ON c.oracle_id = p.oracle_id
+                """)
+            var order: [String] = []
+            var names: [String: String] = [:]
+            var members: [String: [String]] = [:]
+            var seen: [String: Set<String>] = [:]
+            for row in rows {
+                let code: String = row["code"]
+                let cardID: String = row["card_id"]
+                if members[code] == nil {
+                    order.append(code)
+                    members[code] = []
+                    seen[code] = []
+                    names[code] = row["name"]
+                }
+                if seen[code]?.contains(cardID) == false {
+                    members[code]?.append(cardID)
+                    seen[code]?.insert(cardID)
+                }
+            }
+            return order.map { Card.SetGroup(code: $0, name: names[$0] ?? $0, memberIDs: members[$0] ?? []) }
+        }
+    }
+
     // MARK: - Helpers
+
+    /// UTC second-granularity timestamp for list created/updated stamps.
+    private static let timestampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
+
+    static func timestamp(_ date: Date = Date()) -> String {
+        timestampFormatter.string(from: date)
+    }
 
     /// UTC, day-granularity formatter matching the stored `date_added` ("YYYY-MM-DD").
     private static let dayFormatter: DateFormatter = {
@@ -307,7 +654,8 @@ public final class CardStore {
             toughness: row["toughness"],
             colors: colors,
             imagePath: row["image_path"],
-            scryfallURI: row["scryfall_uri"]
+            scryfallURI: row["scryfall_uri"],
+            oracleID: row["oracle_id"]
         )
     }
 }

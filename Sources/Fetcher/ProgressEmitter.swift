@@ -19,7 +19,7 @@ public final class ProgressEmitter {
     }
 
     public struct Event: Encodable {
-        public let phase: String        // "json" | "ingest" | "images" | "done" | "error"
+        public let phase: String        // "json" | "ingest" | "sets" | "printings" | "images" | "done" | "error"
         public let done: Int?
         public let total: Int?
         public let message: String?
