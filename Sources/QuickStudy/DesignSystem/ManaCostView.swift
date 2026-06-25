@@ -1,4 +1,5 @@
 import SwiftUI
+import Shared
 
 /// Renders a mana-cost string as a row of colored pips.
 struct ManaCostView: View {
@@ -29,21 +30,21 @@ struct ManaPipDisc: View {
                 Circle().fill(DS.tint(for: halves[0].identity))
                 Circle().fill(DS.tint(for: halves[1].identity))
                     .clipShape(BottomRightTriangle())
-                glyph(halves[0].glyph, scale: 0.40).offset(x: -size * 0.19, y: -size * 0.19)
-                glyph(halves[1].glyph, scale: 0.40).offset(x: size * 0.19, y: size * 0.19)
+                glyph(halves[0].glyph, scale: 0.40, identity: halves[0].identity).offset(x: -size * 0.19, y: -size * 0.19)
+                glyph(halves[1].glyph, scale: 0.40, identity: halves[1].identity).offset(x: size * 0.19, y: size * 0.19)
             } else {
                 Circle().fill(DS.tint(for: pip.identity))
-                glyph(pip.glyph, scale: 0.58)
+                glyph(pip.glyph, scale: 0.58, identity: pip.identity)
             }
         }
         .frame(width: size, height: size)
         .overlay(Circle().strokeBorder(Color.black.opacity(0.18), lineWidth: 0.5))
     }
 
-    private func glyph(_ s: String, scale: CGFloat) -> some View {
+    private func glyph(_ s: String, scale: CGFloat, identity: ColorIdentity) -> some View {
         Text(s)
             .font(.system(size: round(size * scale), weight: .bold, design: .monospaced))
-            .foregroundStyle(DS.manaInk)
+            .foregroundStyle(DS.manaInk(for: identity))
     }
 }
 

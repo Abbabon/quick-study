@@ -54,12 +54,17 @@ enum DS {
     // MARK: MTG mana tints (theme-independent)
     static let manaW = Color(hex: 0xFFFBD5)
     static let manaU = Color(hex: 0xAAE0FA)
-    static let manaB = Color(hex: 0xCBC2BF)
+    static let manaB = Color(hex: 0x262321)
     static let manaR = Color(hex: 0xF9AA8F)
     static let manaG = Color(hex: 0x9BD3AE)
     static let manaC = Color(hex: 0xCAC5C0)
     static let manaGold = Color(hex: 0xD6B458)
     static let manaInk = Color(hex: 0x1A1714)
+    /// Glyph ink drawn on a pip of `identity`: white on the dark black-mana disc,
+    /// the warm dark ink everywhere else.
+    static func manaInk(for identity: ColorIdentity) -> Color {
+        identity == .black ? .white : manaInk
+    }
     static var goldGradient: LinearGradient {
         LinearGradient(colors: [Color(hex: 0xE6CC74), Color(hex: 0xC49B3F)],
                        startPoint: .topLeading, endPoint: .bottomTrailing)

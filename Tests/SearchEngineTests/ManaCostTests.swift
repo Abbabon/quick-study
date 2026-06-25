@@ -13,7 +13,7 @@ final class ManaCostTests: XCTestCase {
     }
 
     func testTapSymbol() {
-        XCTAssertEqual(ManaCost.pips(from: "{T}"), [ManaPip(glyph: "↻", identity: .colorless)])
+        XCTAssertEqual(ManaCost.pips(from: "{T}"), [ManaPip(glyph: "↺", identity: .colorless)])
     }
 
     func testGuildHybridSplitsIntoTwoColoredHalves() {
