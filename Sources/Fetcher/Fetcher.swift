@@ -92,9 +92,18 @@ struct FetcherMain {
             }
             try store.setMeta("last_refresh", ISO8601DateFormatter().string(from: Date()))
             try store.setMeta("bulk_updated_at", info.updated_at)
-            // The fetcher never deletes cards, so the row-count delta is the number
-            // of brand-new cards this ingest added.
+            // Row-count delta after upsert (before reconcile) is the number of brand-new
+            // cards this ingest added — reconcile only removes rows that were already stale.
             let newCards = max(0, try store.count() - countBefore)
+
+            // Reconcile: drop rows this complete ingest no longer produces (orphans from a
+            // changed representative printing id; junk layouts an older fetcher ingested).
+            // Safe only because we have the full, successfully-parsed id set in hand.
+            let removed = try store.reconcileCards(keepingIDs: Set(cards.map(\.id)))
+            if removed > 0 {
+                emitter.emit(phase: "ingest", done: cards.count, total: cards.count,
+                             message: "removed \(removed) stale cards")
+            }
 
             // Sets catalog + per-card printings (manual refresh only; gated by --printings).
             if printings {

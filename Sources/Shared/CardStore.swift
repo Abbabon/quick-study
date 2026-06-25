@@ -286,6 +286,66 @@ public final class CardStore {
         }
     }
 
+    /// Removes `cards` rows the latest ingest no longer produces and returns how many
+    /// were deleted. Two kinds of staleness accumulate because `upsert` is additive
+    /// (`ON CONFLICT(id) DO UPDATE`, never deleting): orphans left behind when Scryfall
+    /// changes an oracle card's representative printing `id` between refreshes, and junk
+    /// layouts (tokens/emblems) an older fetcher ingested before `toCard()` filtered them.
+    /// Both linger with NULL oracle_id, surfacing in search with no image/set/printings.
+    ///
+    /// Before deleting a stale row a list references, the list entry is remapped onto a
+    /// surviving same-name card so a representative-id change doesn't silently drop a card
+    /// from a wishlist/deck. Entries whose card is genuinely gone (no survivor) are removed.
+    ///
+    /// MUST be called only after a COMPLETE oracle ingest, with `keep` = the full set of
+    /// ids just upserted. A partial/failed ingest would otherwise delete valid cards.
+    @discardableResult
+    public func reconcileCards(keepingIDs keep: Set<String>) throws -> Int {
+        try dbQueue.write { db in
+            let staleIDs = try String.fetchAll(db, sql: "SELECT id FROM cards")
+                .filter { !keep.contains($0) }
+            guard !staleIDs.isEmpty else { return 0 }
+            let stale = Set(staleIDs)
+
+            // Remap list entries off each stale row onto a surviving same-name card.
+            for staleID in staleIDs {
+                let listIDs = try String.fetchAll(db,
+                    sql: "SELECT list_id FROM card_list_items WHERE card_id = ?",
+                    arguments: [staleID])
+                guard !listIDs.isEmpty,
+                      let name = try String.fetchOne(db,
+                          sql: "SELECT name FROM cards WHERE id = ?", arguments: [staleID])
+                else { continue }
+                // Same-name candidates, narrowed to ids the current ingest kept.
+                let candidates = try String.fetchAll(db,
+                    sql: "SELECT id FROM cards WHERE name = ? AND id <> ? ORDER BY id",
+                    arguments: [name, staleID])
+                guard let survivorID = candidates.first(where: { keep.contains($0) && !stale.contains($0) })
+                else { continue }   // no survivor → leave; row delete drops the dangling item below
+                for listID in listIDs {
+                    // OR IGNORE: if the survivor is already in this list, drop the stale
+                    // entry instead of colliding on the (list_id, card_id) primary key.
+                    try db.execute(sql: """
+                        UPDATE OR IGNORE card_list_items SET card_id = ? WHERE list_id = ? AND card_id = ?
+                        """, arguments: [survivorID, listID, staleID])
+                }
+            }
+
+            // Delete the stale cards and any list entries still pointing at them (the
+            // remapped ones moved off staleIDs above, so only no-survivor leftovers match).
+            // Chunk the IN-clauses to stay under SQLite's bound-variable limit.
+            for start in stride(from: 0, to: staleIDs.count, by: 500) {
+                let chunk = Array(staleIDs[start..<min(start + 500, staleIDs.count)])
+                let placeholders = databaseQuestionMarks(count: chunk.count)
+                try db.execute(sql: "DELETE FROM card_list_items WHERE card_id IN (\(placeholders))",
+                               arguments: StatementArguments(chunk))
+                try db.execute(sql: "DELETE FROM cards WHERE id IN (\(placeholders))",
+                               arguments: StatementArguments(chunk))
+            }
+            return staleIDs.count
+        }
+    }
+
     public func setImagePath(_ path: String, forID id: String) throws {
         try dbQueue.write { db in
             try db.execute(sql: "UPDATE cards SET image_path = ? WHERE id = ?", arguments: [path, id])

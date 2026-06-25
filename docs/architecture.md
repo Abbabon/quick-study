@@ -67,7 +67,7 @@ CLI flags:
 
 ### 2.3 `QuickStudy` (SwiftUI app executable)
 
-Menu-bar-resident app. No Dock icon (`LSUIElement = YES` in Info.plist + `NSApp.setActivationPolicy(.accessory)` at runtime).
+Menu-bar-resident app that also keeps a Dock icon at all times (`LSUIElement = NO` in Info.plist + `NSApp.setActivationPolicy(.regular)` at runtime).
 
 | File | Purpose |
 |---|---|
@@ -253,7 +253,7 @@ The app reads stdout incrementally via `Pipe.readabilityHandler`, buffers, split
 
 - **Image download** is fully resumable: skips files already on disk; failures are silent (next refresh retries).
 - **Bulk JSON** is re-downloaded each refresh — Scryfall publishes daily.
-- **Ingest** uses `INSERT … ON CONFLICT(id) DO UPDATE`, so partial runs are safe to retry.
+- **Ingest** uses `INSERT … ON CONFLICT(id) DO UPDATE`, so partial runs are safe to retry. After a *complete* ingest it runs `CardStore.reconcileCards(keepingIDs:)`, deleting `cards` rows the current bulk no longer produces — orphans left when Scryfall changes an oracle card's representative printing `id`, and junk layouts an older fetcher ingested before they were filtered. List entries pointing at a removed row are remapped onto the surviving same-name card first (so wishlists/decks survive an id change); entries with no survivor are dropped. Reconcile runs only with the full, successfully-parsed id set in hand, never on a partial run.
 - **Search engine** rebuilds its in-memory index on `AppModel.refreshDBState()` after any refresh.
 
 ## 9. Suggested subtask split for future iterations
