@@ -35,6 +35,8 @@ other versions of this card / a specific version (cache)."
 
 - Rendering set symbols as images. We **store** `icon_svg_uri` but display set codes as text.
   (macOS `NSImage` can't load SVG natively; an asset pipeline is future work.)
+- A *search* filter for digital printings. The MTGO/Arena toggles affect only the **display**
+  of the Printings list, not which cards set-name search returns.
 - Downloading or caching per-printing images. The schema reserves `printing_id` for it; no
   download flow is built now.
 - Pulling printings during the lightweight silent background ingest (bandwidth choice below).
@@ -46,6 +48,7 @@ other versions of this card / a specific version (cache)."
 | Printings data source | Scryfall `default_cards` bulk (~one English printing per card+set) |
 | Set marks display | Text (set name + code); `icon_svg_uri` stored for the future |
 | Printings UX now | List in preview; click set → search that set's name |
+| Digital printings | Stored and shown by default; Settings toggles hide MTGO / Arena printings |
 | Ingest wiring | Manual refresh only; silent background ingest stays oracle-only (~30 MB) |
 
 ## Architecture
@@ -65,15 +68,17 @@ store. Three new migrations in `CardStore`:
 - **v7 — `printings` table**:
   `printing_id` TEXT PK (Scryfall per-printing UUID), `oracle_id` TEXT indexed,
   `set_code` TEXT, `set_name` TEXT, `collector_number` TEXT, `released_at` TEXT,
-  `rarity` TEXT.
+  `rarity` TEXT, `digital` INTEGER (0/1), `games` TEXT (JSON array, e.g.
+  `["paper","mtgo"]`). `digital`+`games` drive the MTGO/Arena display toggles.
 
 `printing_id` is the reserved hook: a future "download this version" resolves it to an image
 and caches under a per-printing directory (see Future work).
 
 New read models:
 
-- `Card.Printing` — `setCode`, `setName`, `collectorNumber`, `releasedAt`, `rarity`. Drives
-  the preview list.
+- `Card.Printing` — `setCode`, `setName`, `collectorNumber`, `releasedAt`, `rarity`,
+  `digital`, `games`. Drives the preview list and the MTGO/Arena filtering. Helpers
+  `isMTGOOnly` / `isArenaOnly` (`digital && games == ["mtgo"]` / `== ["arena"]`).
 - (Internal) a lightweight set-index row used by search; no public model needed beyond what
   `loadSetIndex()` returns.
 
@@ -92,9 +97,10 @@ runs two new phases:
   NDJSON progress tick per batch.
 
 Parsing rules for `default_cards` mirror the oracle parse: skip `token`,
-`double_faced_token`, `art_series`, `emblem` layouts. Keep all sets including digital
-(matches Scryfall's default prints view); filter to `lang == "en"` to avoid duplicate
-language rows. Rows missing `oracle_id` are skipped.
+`double_faced_token`, `art_series`, `emblem` layouts. Keep all sets **including digital**
+(MTGO/Arena) — `digital` and `games` are captured per printing so the UI can filter them;
+filter to `lang == "en"` to avoid duplicate language rows. Rows missing `oracle_id` are
+skipped.
 
 Phase strings `"sets"` and `"printings"` are free-form `phase` values — no NDJSON schema
 change — but the documented phase lists in `ProgressEmitter.swift`, `FetcherProcess.swift`,
@@ -148,7 +154,12 @@ grouped by set. `AppModel.refreshDBState` loads it into the engine alongside `lo
 - `CardPreview`: a **Printings** section under the oracle text / P-T. Each row shows
   `Set Name (CODE) · YYYY · rarity`; tapping calls an injected `onSetTap(setName)` →
   `model.searchSet`. Printings + callback are passed in from `SearchPanel` (same pattern as
-  the existing `lists`/`onAddToList` injection).
+  the existing `lists`/`onAddToList` injection). The list is filtered by the MTGO/Arena
+  settings (below): an MTGO-only printing is hidden when "Show MTGO printings" is off, an
+  Arena-only printing when "Show Arena printings" is off.
+- **Settings** (`SettingsView`, *Search* category): two toggles, default **on** —
+  "Show Magic Online (MTGO) printings" (`UserDefaults` key `showMTGOPrintings`) and
+  "Show Arena printings" (`showArenaPrintings`). `CardPreview` reads them via `@AppStorage`.
 
 ### 5. Docs
 
