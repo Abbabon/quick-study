@@ -81,6 +81,7 @@ struct CardPreview: View {
                     if let cost = card.manaCost, !cost.isEmpty {
                         ManaCostView(cost: cost, size: scale.size(16))
                     }
+                    RarityBadge(rarity: card.rarity, size: scale.size(16))
                     Spacer(minLength: scale.pad(8))
                     addToListMenu(scale: scale)
                     pinButton(scale: scale)
@@ -94,6 +95,7 @@ struct CardPreview: View {
         if let cost = card.manaCost, !cost.isEmpty {
             ManaCostView(cost: cost, size: scale.size(16))
         }
+        RarityBadge(rarity: card.rarity, size: scale.size(16))
         addToListMenu(scale: scale)
         pinButton(scale: scale)
     }

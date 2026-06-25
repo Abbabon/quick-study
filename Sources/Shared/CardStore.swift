@@ -134,6 +134,16 @@ public final class CardStore {
                 t.column("games", .text).notNull().defaults(to: "[]")
             }
         }
+        m.registerMigration("v9") { db in
+            // `rarity` = the representative printing's rarity (drives the at-a-glance badge);
+            // `cmc` = Scryfall mana value (drives the `mv:`/`cmc:` search filter). Both ride
+            // the normal oracle_cards ingest — no --printings run needed. NULL until the next
+            // ingest backfills them, so `r:`/`mv:` filters simply skip un-refreshed rows.
+            try db.alter(table: "cards") { t in
+                t.add(column: "rarity", .text)
+                t.add(column: "cmc", .double)
+            }
+        }
         return m
     }
 
@@ -147,14 +157,62 @@ public final class CardStore {
 
     public func loadMinis() throws -> [Card.Mini] {
         try dbQueue.read { db in
-            let rows = try Row.fetchAll(db, sql: "SELECT id, name, colors, set_code, set_name FROM cards")
+            let rows = try Row.fetchAll(db, sql: "SELECT id, name, colors, set_code, set_name, rarity FROM cards")
             let decoder = JSONDecoder()
             return rows.map { row in
                 let colorsRaw: String = row["colors"] ?? "[]"
                 let colors = (try? decoder.decode([String].self, from: Data(colorsRaw.utf8))) ?? []
                 return Card.Mini(id: row["id"], name: row["name"], colors: colors,
-                                 setCode: row["set_code"], setName: row["set_name"])
+                                 setCode: row["set_code"], setName: row["set_name"],
+                                 rarity: row["rarity"])
             }
+        }
+    }
+
+    /// Per-card metadata for the in-memory inline search filters, keyed by card `id`.
+    /// Pulls the filterable card columns in one pass and folds in the set of rarities the
+    /// card has ever been printed at (from `printings`, joined on `oracle_id`), so that
+    /// `r:common` means "ever printed common". The card's own representative `rarity` is
+    /// unioned in as a fallback, so basic rarity filtering works even before a `--printings`
+    /// refresh has populated the printings table. All rarities are lowercased.
+    public func loadFilterFields() throws -> [String: Card.FilterFields] {
+        try dbQueue.read { db in
+            // oracle_id -> set of printing rarities
+            var raritiesByOracle: [String: Set<String>] = [:]
+            let pRows = try Row.fetchAll(db, sql: """
+                SELECT oracle_id, rarity FROM printings
+                WHERE oracle_id IS NOT NULL AND rarity IS NOT NULL
+                """)
+            for row in pRows {
+                guard let oid: String = row["oracle_id"], let r: String = row["rarity"] else { continue }
+                raritiesByOracle[oid, default: []].insert(r.lowercased())
+            }
+
+            let decoder = JSONDecoder()
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, oracle_id, colors, type_line, oracle_text, cmc, rarity FROM cards
+                """)
+            var result: [String: Card.FilterFields] = [:]
+            result.reserveCapacity(rows.count)
+            for row in rows {
+                let id: String = row["id"]
+                let colorsRaw: String = row["colors"] ?? "[]"
+                let colors = (try? decoder.decode([String].self, from: Data(colorsRaw.utf8))) ?? []
+                var rarities: Set<String> = []
+                if let oid: String = row["oracle_id"], let printed = raritiesByOracle[oid] {
+                    rarities.formUnion(printed)
+                }
+                if let rep: String = row["rarity"] { rarities.insert(rep.lowercased()) }
+                let type: String? = row["type_line"]
+                let oracle: String? = row["oracle_text"]
+                result[id] = Card.FilterFields(
+                    colors: colors,
+                    typeLineLower: type?.lowercased(),
+                    oracleTextLower: oracle?.lowercased(),
+                    cmc: row["cmc"],
+                    rarities: rarities)
+            }
+            return result
         }
     }
 
@@ -249,8 +307,8 @@ public final class CardStore {
                 let colorsJSON = (try? String(data: JSONEncoder().encode(c.colors), encoding: .utf8)) ?? "[]"
                 let firstSeen = (c.dateAdded.map { $0 < today ? $0 : today }) ?? today
                 try db.execute(sql: """
-                    INSERT INTO cards (id, name, name_lower, mana_cost, type_line, oracle_text, power, toughness, colors, image_path, scryfall_uri, oracle_id, set_code, set_name, date_added, first_seen)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO cards (id, name, name_lower, mana_cost, type_line, oracle_text, power, toughness, colors, image_path, scryfall_uri, oracle_id, set_code, set_name, date_added, first_seen, rarity, cmc)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         name = excluded.name,
                         name_lower = excluded.name_lower,
@@ -264,6 +322,8 @@ public final class CardStore {
                         oracle_id = excluded.oracle_id,
                         set_code = excluded.set_code,
                         set_name = excluded.set_name,
+                        rarity = excluded.rarity,
+                        cmc = excluded.cmc,
                         -- Keep the EARLIEST date Scryfall reports for this card: when a
                         -- future-dated set is later spoiled, `previewed_at` (computed into
                         -- excluded.date_added) is earlier than the frozen `released_at`, so
@@ -281,6 +341,7 @@ public final class CardStore {
                     c.scryfallURI,
                     c.oracleID,
                     c.setCode, c.setName, c.dateAdded, firstSeen,
+                    c.rarity, c.cmc,
                 ])
             }
         }
@@ -655,7 +716,9 @@ public final class CardStore {
             colors: colors,
             imagePath: row["image_path"],
             scryfallURI: row["scryfall_uri"],
-            oracleID: row["oracle_id"]
+            oracleID: row["oracle_id"],
+            rarity: row["rarity"],
+            cmc: row["cmc"]
         )
     }
 }

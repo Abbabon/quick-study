@@ -167,7 +167,8 @@ final class AppModel: ObservableObject {
                 dbState = .empty
             } else {
                 dbState = .ready
-                engine.load(try store.loadMinis(), sets: (try? store.loadSetIndex()) ?? [])
+                engine.load(try store.loadMinis(), sets: (try? store.loadSetIndex()) ?? [],
+                            filterFields: (try? store.loadFilterFields()) ?? [:])
                 recentlyAdded = (try? store.recentlyAdded()) ?? []
                 reloadLists()
             }
@@ -192,7 +193,8 @@ final class AppModel: ObservableObject {
             return
         }
         selectedRecent = nil
-        results = engine.search(query)
+        let parsed = QueryParser.parse(query)
+        results = engine.search(name: parsed.name, filters: parsed.filters)
         if let first = results.first, selectedID == nil || !results.contains(where: { $0.id == selectedID }) {
             select(first.id)
         } else if results.isEmpty {

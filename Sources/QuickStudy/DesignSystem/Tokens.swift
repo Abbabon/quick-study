@@ -102,6 +102,12 @@ enum DS {
     /// Empty hearts (`--qs-text-quaternary`).
     static let textQuaternary = Color(light: .black.opacity(0.14), dark: .white.opacity(0.14))
 
+    // MARK: Rarity tints (MTG-conventional: grey / silver-blue / gold / orange)
+    static let rarityCommon = Color(light: Color(hex: 0x595959), dark: Color(hex: 0xB6B6BC))
+    static let rarityUncommon = Color(light: Color(hex: 0x5E7A8C), dark: Color(hex: 0x9FBDCE))
+    static let rarityRare = Color(light: Color(hex: 0x9A741F), dark: Color(hex: 0xD8B36A))
+    static let rarityMythic = Color(light: Color(hex: 0xC4471B), dark: Color(hex: 0xE9714A))
+
     // MARK: Status
     static let statusRed = Color(hex: 0xFF3B30)
     static let statusGreen = Color(hex: 0x34C759)

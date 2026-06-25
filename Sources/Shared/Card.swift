@@ -39,6 +39,11 @@ public struct Card: Codable, Equatable, Sendable {
     /// rows ingested before this column existed (backfilled by the next ingest).
     public let oracleID: String?
     public let dateAdded: String?  // "YYYY-MM-DD" (Scryfall released_at), nil if unknown
+    /// The representative printing's rarity ("common"/"uncommon"/"rare"/"mythic"/…),
+    /// shown as an at-a-glance badge. NULL on rows ingested before this column existed.
+    public let rarity: String?
+    /// Scryfall mana value (converted mana cost). Drives the `mv:`/`cmc:` search filter.
+    public let cmc: Double?
 
     public init(
         id: String,
@@ -54,7 +59,9 @@ public struct Card: Codable, Equatable, Sendable {
         setCode: String? = nil,
         setName: String? = nil,
         oracleID: String? = nil,
-        dateAdded: String? = nil
+        dateAdded: String? = nil,
+        rarity: String? = nil,
+        cmc: Double? = nil
     ) {
         self.id = id
         self.name = name
@@ -70,6 +77,8 @@ public struct Card: Codable, Equatable, Sendable {
         self.setName = setName
         self.oracleID = oracleID
         self.dateAdded = dateAdded
+        self.rarity = rarity
+        self.cmc = cmc
     }
 
     public var identity: ColorIdentity { ColorIdentity(colors: colors) }
@@ -84,6 +93,8 @@ public struct Card: Codable, Equatable, Sendable {
         public let setCodeLower: String?
         /// Lowercased full set name (e.g. "modern horizons").
         public let setNameLower: String?
+        /// Representative rarity for the at-a-glance badge. nil when unknown (un-refreshed rows).
+        public let rarity: String?
 
         /// Legacy init for callers with no colors data; identity will be .colorless.
         public init(id: String, name: String) {
@@ -91,20 +102,43 @@ public struct Card: Codable, Equatable, Sendable {
         }
 
         public init(id: String, name: String, colors: [String],
-                    setCode: String? = nil, setName: String? = nil) {
+                    setCode: String? = nil, setName: String? = nil, rarity: String? = nil) {
             self.init(id: id, name: name, identity: ColorIdentity(colors: colors),
-                      setCode: setCode, setName: setName)
+                      setCode: setCode, setName: setName, rarity: rarity)
         }
 
         /// Direct init for callers that already know the identity (e.g. pin deserialization).
         public init(id: String, name: String, identity: ColorIdentity,
-                    setCode: String? = nil, setName: String? = nil) {
+                    setCode: String? = nil, setName: String? = nil, rarity: String? = nil) {
             self.id = id
             self.name = name
             self.nameLower = name.lowercased()
             self.identity = identity
             self.setCodeLower = setCode?.lowercased()
             self.setNameLower = setName?.lowercased()
+            self.rarity = rarity
+        }
+    }
+
+    /// Per-card metadata loaded into memory for inline search filters (`r:`/`c:`/`t:`/
+    /// `mv:`/`o:`). Kept separate from `Card.Mini` (which stays lean for name ranking) and
+    /// keyed by card `id` in `SearchEngine`. `rarities` is the set of every rarity the card
+    /// has ever been printed at (from the `printings` table, unioned with the representative
+    /// `rarity` as a fallback) — this is what makes `r:common` mean "ever printed common".
+    public struct FilterFields: Sendable, Equatable {
+        public let colors: [String]
+        public let typeLineLower: String?
+        public let oracleTextLower: String?
+        public let cmc: Double?
+        public let rarities: Set<String>
+
+        public init(colors: [String], typeLineLower: String?, oracleTextLower: String?,
+                    cmc: Double?, rarities: Set<String>) {
+            self.colors = colors
+            self.typeLineLower = typeLineLower
+            self.oracleTextLower = oracleTextLower
+            self.cmc = cmc
+            self.rarities = rarities
         }
     }
 
