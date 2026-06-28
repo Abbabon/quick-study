@@ -13,7 +13,7 @@ struct ResultList: View {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(model.results, id: \.id) { mini in
                             Row(model: model, mini: mini, selected: mini.id == model.selectedID) {
-                                model.select(mini.id)
+                                model.select(mini.id, immediate: true)
                                 // Clicking a row pulls focus off the search field; restore it so
                                 // ↑↓ keep navigating the list after a card is picked.
                                 model.focusSearchField()

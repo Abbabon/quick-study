@@ -35,7 +35,7 @@ struct CardPreview: View {
     @ViewBuilder
     private func content(card: Card, scale: UIScale) -> some View {
         HStack(alignment: .top, spacing: scale.pad(16)) {
-            cardImage(for: card.identity, id: card.id)
+            CardImageView(id: card.id, identity: card.identity)
                 .frame(maxWidth: 330, maxHeight: 480)
                 .dsCardShadow()
             VStack(alignment: .leading, spacing: scale.pad(8)) {
@@ -144,7 +144,8 @@ struct CardPreview: View {
                 .font(scale.font(11, weight: .semibold))
                 .foregroundStyle(.secondary)
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                // Lazy: some cards (basic lands) have 800+ printings — don't build them all up front.
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(visiblePrintings) { p in
                         Button { onPrintingTap(p) } label: {
                             HStack(spacing: scale.pad(6)) {
@@ -171,16 +172,48 @@ struct CardPreview: View {
         .padding(.top, scale.pad(4))
     }
 
-    @ViewBuilder
-    private func cardImage(for identity: ColorIdentity, id: String) -> some View {
-        let url = Paths.imageURL(forCardID: id)
-        if FileManager.default.fileExists(atPath: url.path), let img = NSImage(contentsOf: url) {
-            Image(nsImage: img)
-                .resizable()
-                .scaledToFit()
-                .clipShape(RoundedRectangle(cornerRadius: DS.Radius.img))
-        } else {
-            IdentityPlaceholder(identity: identity, cornerRadius: DS.Radius.img, symbol: "photo")
+}
+
+/// The large card image in the preview. Reads from the shared `ThumbnailCache` — the same
+/// on-disk file the results/recently-added rows already decoded for their thumbnails — so a
+/// previously-listed card shows instantly. On a miss it decodes off the main thread instead of
+/// blocking the preview's render (these JPEGs are ~100–300 KB and previously decoded
+/// synchronously inside `body` on every re-render).
+private struct CardImageView: View {
+    let id: String
+    let identity: ColorIdentity
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: DS.Radius.img))
+            } else {
+                IdentityPlaceholder(identity: identity, cornerRadius: DS.Radius.img, symbol: "photo")
+            }
+        }
+        .onAppear(perform: load)
+        // The preview view is reused as the selection changes — reload when the card does.
+        .onChange(of: id) { _, _ in image = nil; load() }
+    }
+
+    private func load() {
+        if let cached = ThumbnailCache.cached(id) {
+            image = cached
+            return
+        }
+        let cardID = id
+        Task.detached(priority: .userInitiated) {
+            let url = Paths.imageURL(forCardID: cardID)
+            guard FileManager.default.fileExists(atPath: url.path),
+                  let img = NSImage(contentsOf: url) else { return }
+            ThumbnailCache.store(img, for: cardID)
+            await MainActor.run {
+                if self.id == cardID { self.image = img }
+            }
         }
     }
 }

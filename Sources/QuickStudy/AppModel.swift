@@ -179,18 +179,58 @@ final class AppModel: ObservableObject {
             lastRefresh = try? store.meta("last_refresh")
             if n == 0 {
                 dbState = .empty
-            } else {
-                dbState = .ready
-                engine.load(try store.loadMinis(), sets: (try? store.loadSetIndex()) ?? [],
-                            filterFields: (try? store.loadFilterFields()) ?? [:])
-                recentlyAdded = (try? store.recentlyAdded()) ?? []
+                engine.load([], sets: [], filterFields: [:])
+                recentlyAdded = []
                 reloadLists()
+                refreshImageCacheSize()
+                refreshArtworkState()
+                return
             }
-            refreshImageCacheSize()
-            refreshArtworkState()
         } catch {
             dbState = .unknown
+            return
         }
+        // The card data exists — load it off the main thread. The heavy reads (25k minis with
+        // per-row JSON decode, the printings×cards JOIN for the set index, lowercasing every
+        // card's rules text for filters, plus image-dir traversals) used to run synchronously
+        // here, blocking launch and the first panel open. We now defer them and flip `dbState`
+        // to `.ready` only once the engine is populated; until then the panel shows its
+        // `.unknown` "Loading database…" state on first launch, or keeps the prior results on a
+        // post-fetch refresh (where `dbState` is already `.ready`).
+        loadEngineInBackground(store)
+    }
+
+    /// Performs the heavy database + filesystem reads off the main actor, then hands the
+    /// results to `applyLoadedDB` back on the main actor.
+    private func loadEngineInBackground(_ store: CardStore) {
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let minis = (try? store.loadMinis()) ?? []
+            let sets = (try? store.loadSetIndex()) ?? []
+            let fields = (try? store.loadFilterFields()) ?? [:]
+            let recents = (try? store.recentlyAdded()) ?? []
+            let imageBytes = (try? ImageCache.size(at: Paths.imagesDir)) ?? 0
+            let artCount = (try? store.artworkCount()) ?? 0
+            let artBytes = (try? ImageCache.size(at: Paths.artDir)) ?? 0
+            await self?.applyLoadedDB(minis: minis, sets: sets, fields: fields, recents: recents,
+                                      imageBytes: imageBytes, artCount: artCount, artBytes: artBytes)
+        }
+    }
+
+    /// Applies the results of `loadEngineInBackground` and marks the DB ready.
+    @MainActor
+    private func applyLoadedDB(minis: [Card.Mini], sets: [Card.SetGroup],
+                              fields: [String: Card.FilterFields], recents: [Card.Recent],
+                              imageBytes: Int64, artCount: Int, artBytes: Int64) {
+        engine.load(minis, sets: sets, filterFields: fields)
+        recentlyAdded = recents
+        reloadLists()
+        imageCacheSizeFormatted = ByteCountFormatter.string(fromByteCount: imageBytes, countStyle: .file)
+        artworkCount = artCount
+        artCacheSizeFormatted = ByteCountFormatter.string(fromByteCount: artBytes, countStyle: .file)
+        dbState = .ready
+        // A query may have been typed while the engine was still loading — run it now that
+        // results can actually be produced.
+        if !query.isEmpty { runSearch() }
     }
 
     func runSearch() {
@@ -245,11 +285,16 @@ final class AppModel: ObservableObject {
     func selectRecent(_ recent: Card.Recent) {
         query = ""
         results = []
-        select(recent.id)
+        // A click is a deliberate, single selection — load its detail now, don't make the
+        // user wait out the keystroke-coalescing delay.
+        select(recent.id, immediate: true)
         selectedRecent = recent
     }
 
-    func select(_ id: String) {
+    /// Selects a card and loads its detail (card row + printings) for the preview. Uncached
+    /// detail is read off the keystroke path; pass `immediate` for a deliberate selection (a
+    /// click) so it skips the coalescing delay that only exists to absorb fast typing.
+    func select(_ id: String, immediate: Bool = false) {
         selectedID = id
         // Cached detail is in-memory and cheap — apply synchronously so the preview tracks fast.
         if let cached = detailCache.object(forKey: id as NSString) {
@@ -259,24 +304,35 @@ final class AppModel: ObservableObject {
             selectedPrintings = cached.printings
             return
         }
-        // Uncached: defer the SQLite reads off the keystroke path. While typing fast the top
-        // result changes every keystroke; coalescing means the DB is read only once typing pauses.
+        guard let store = store else { return }
+        // Uncached: read the card row + its printings OFF the main actor — basic lands carry
+        // 800+ printings, enough to stutter the UI if decoded on the main thread. While typing
+        // fast the top result changes every keystroke, so we coalesce with a short delay; a
+        // deliberate click passes `immediate` to skip it and show the card right away.
         detailLoadTask?.cancel()
         detailLoadTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
-            guard !Task.isCancelled, let self, self.selectedID == id,
-                  let store = self.store, let card = try? store.card(id: id) else { return }
-            let printings = Self.printings(for: card, store: store)
-            guard self.selectedID == id else { return }   // selection moved on while reading
-            self.detailCache.setObject(CachedCard(card, printings: printings), forKey: id as NSString)
-            self.selectedCard = card
-            self.selectedPrintings = printings
+            if !immediate { try? await Task.sleep(for: .milliseconds(120)) }
+            if Task.isCancelled { return }
+            guard let loaded = await Self.loadDetail(id: id, store: store) else { return }
+            guard let self, self.selectedID == id else { return }   // selection moved on
+            self.detailCache.setObject(CachedCard(loaded.card, printings: loaded.printings),
+                                       forKey: id as NSString)
+            self.selectedCard = loaded.card
+            self.selectedPrintings = loaded.printings
         }
+    }
+
+    /// Reads a card and its printings. `nonisolated async` so it runs on the cooperative thread
+    /// pool instead of the main actor (some cards have 800+ printings to read and decode).
+    private nonisolated static func loadDetail(id: String, store: CardStore)
+        async -> (card: Card, printings: [Card.Printing])? {
+        guard let card = try? store.card(id: id) else { return nil }
+        return (card, printings(for: card, store: store))
     }
 
     /// Loads a card's printings (empty if it has no `oracleID`, e.g. ingested before printings
     /// existed or before the first --printings refresh).
-    private static func printings(for card: Card, store: CardStore) -> [Card.Printing] {
+    private nonisolated static func printings(for card: Card, store: CardStore) -> [Card.Printing] {
         guard let oid = card.oracleID else { return [] }
         return (try? store.printings(forOracleID: oid)) ?? []
     }
