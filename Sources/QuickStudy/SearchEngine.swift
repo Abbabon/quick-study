@@ -27,6 +27,9 @@ import Shared
 public final class SearchEngine {
     public private(set) var minis: [Card.Mini] = []
     private var setGroups: [Card.SetGroup] = []
+    /// Set groups with `code`/`name` pre-lowercased, so the per-keystroke set-matching loop
+    /// doesn't re-lowercase every set on every search.
+    private var setGroupsLower: [(code: String, name: String, memberIDs: [String])] = []
     private var minisByID: [String: Card.Mini] = [:]
     /// Per-card metadata for inline filters, keyed by card id. Empty until loaded — when a
     /// card has no entry, positive filters fail (the card is treated as having no metadata).
@@ -45,6 +48,7 @@ public final class SearchEngine {
         self.setGroups = sets
         self.filterFields = filterFields
         self.minisByID = Dictionary(minis.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        self.setGroupsLower = sets.map { ($0.code.lowercased(), $0.name.lowercased(), $0.memberIDs) }
         self.setMembersByCode = Dictionary(
             sets.map { ($0.code.lowercased(), Set($0.memberIDs)) },
             uniquingKeysWith: { a, b in a.union(b) })
@@ -71,13 +75,16 @@ public final class SearchEngine {
         let q = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if q.isEmpty {
             guard !filters.isEmpty else { return ([], 0) }
-            let matched = minis.filter { passes(filters, $0) }
-            let sorted = matched.sorted { a, b in
+            // Filter-only browse (e.g. `c:r`): order by shortest name. Top-k avoids
+            // sorting the whole match set — broad filters can match thousands of cards.
+            let candidates = minis.lazy.filter { self.passes(filters, $0) }
+            let (top, total) = Self.selectTopK(from: candidates, limit: limit) { a, b in
                 let la = Self.lengthBonus(a.nameLower), lb = Self.lengthBonus(b.nameLower)
                 if la != lb { return la > lb }
-                return a.nameLower < b.nameLower
+                if a.nameLower != b.nameLower { return a.nameLower < b.nameLower }
+                return a.id < b.id
             }
-            return (Array(sorted.prefix(limit)), sorted.count)
+            return (top, total)
         }
 
         var bestByID: [String: Int] = [:]
@@ -92,9 +99,9 @@ public final class SearchEngine {
         // Set matches: a matching set contributes every member card, scored in a band below
         // high-confidence name matches. This is what makes "modern horizons" return the whole
         // set rather than the few cards whose representative printing happens to be that set.
-        for g in setGroups {
-            var base: Int? = Self.setCodeScoreBase(query: q, code: g.code.lowercased())
-            if let s = Self.setNameScoreBase(query: q, setName: g.name.lowercased()) {
+        for g in setGroupsLower {
+            var base: Int? = Self.setCodeScoreBase(query: q, code: g.code)
+            if let s = Self.setNameScoreBase(query: q, setName: g.name) {
                 base = max(base ?? Int.min, s)
             }
             guard let setBase = base else { continue }
@@ -105,13 +112,43 @@ public final class SearchEngine {
             }
         }
 
-        let scored = bestByID.compactMap { (id, score) -> (Int, Card.Mini)? in
-            guard let m = minisByID[id] else { return nil }
-            if !filters.isEmpty && !passes(filters, m) { return nil }
+        // Rank by score (desc), with a deterministic name/id tiebreak. Top-k selection
+        // avoids materializing + fully sorting every scored candidate each keystroke.
+        let candidates = bestByID.lazy.compactMap { (id, score) -> (Int, Card.Mini)? in
+            guard let m = self.minisByID[id] else { return nil }
+            if !filters.isEmpty && !self.passes(filters, m) { return nil }
             return (score, m)
         }
-        let ranked = scored.sorted { $0.0 > $1.0 }.prefix(limit).map { $0.1 }
-        return (ranked, scored.count)
+        let (top, total) = Self.selectTopK(from: candidates, limit: limit) { a, b in
+            if a.0 != b.0 { return a.0 > b.0 }
+            if a.1.nameLower != b.1.nameLower { return a.1.nameLower < b.1.nameLower }
+            return a.1.id < b.1.id
+        }
+        return (top.map { $0.1 }, total)
+    }
+
+    /// Selects the best `limit` elements (by `isBetter`, a strict total order) from
+    /// `candidates` in a single pass, also returning the total candidate count. Keeps a
+    /// sorted buffer of at most `limit` so broad queries never sort the whole match set.
+    static func selectTopK<S: Sequence>(
+        from candidates: S, limit: Int, isBetter: (S.Element, S.Element) -> Bool
+    ) -> (matches: [S.Element], total: Int) {
+        var top: [S.Element] = []
+        if limit > 0 { top.reserveCapacity(limit) }
+        var total = 0
+        for c in candidates {
+            total += 1
+            guard limit > 0 else { continue }
+            if top.count < limit {
+                let idx = top.firstIndex { isBetter(c, $0) } ?? top.count
+                top.insert(c, at: idx)
+            } else if isBetter(c, top[limit - 1]) {
+                let idx = top.firstIndex { isBetter(c, $0) } ?? top.count
+                top.insert(c, at: idx)
+                top.removeLast()
+            }
+        }
+        return (top, total)
     }
 
     // MARK: - Inline filters

@@ -125,6 +125,37 @@ final class SearchEngineTests: XCTestCase {
         XCTAssertLessThanOrEqual(engine.search("l", limit: 3).count, 3)
     }
 
+    func testTopKLimitIsPrefixOfFullRanking() {
+        // Top-k selection must produce exactly the first N of the full ranking for any N —
+        // i.e. limiting only truncates, it never reorders. This guards the partial-selection
+        // optimization against the previous "sort everything then prefix" behavior.
+        let engine = SearchEngine(minis: corpus)
+        let full = engine.search("l", limit: 10_000).map(\.id)
+        XCTAssertGreaterThan(full.count, 1)
+        for n in 1...full.count {
+            let limited = engine.search("l", limit: n).map(\.id)
+            XCTAssertEqual(limited, Array(full.prefix(n)))
+        }
+    }
+
+    func testTopKFilterOnlyLimitIsPrefix() {
+        // Same prefix guarantee for the empty-name, filter-only branch (e.g. `s:abc`).
+        let minis = [
+            Card.Mini(id: "a", name: "Aaa", colors: [], setCode: "ABC", setName: "Alpha"),
+            Card.Mini(id: "b", name: "Bb", colors: [], setCode: "ABC", setName: "Alpha"),
+            Card.Mini(id: "c", name: "Cccc", colors: [], setCode: "ABC", setName: "Alpha"),
+            Card.Mini(id: "d", name: "Dd", colors: [], setCode: "ABC", setName: "Alpha"),
+        ]
+        let engine = SearchEngine(minis: minis)
+        let filter = QueryParser.parse("s:abc").filters
+        let full = engine.search(name: "", filters: filter, limit: 10_000).map(\.id)
+        XCTAssertEqual(full.count, 4)
+        for n in 1...full.count {
+            let limited = engine.search(name: "", filters: filter, limit: n).map(\.id)
+            XCTAssertEqual(limited, Array(full.prefix(n)))
+        }
+    }
+
     func testSearchCountedReportsTotalBeyondLimit() {
         let engine = SearchEngine(minis: corpus)
         let unlimited = engine.search("l", limit: 1000).count

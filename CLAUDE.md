@@ -23,6 +23,23 @@ Guidelines:
 - The SPM build cache (`.build`) is per-worktree; the first `swift build` in a fresh worktree may re-fetch/re-compile dependencies.
 - The shared SQLite DB and image dir live under `~/Library/Application Support/QuickStudy/` and are *not* per-worktree — concurrent fetcher runs across worktrees write the same DB, so avoid running `mtg-fetcher --printings` from two worktrees at once.
 
+### Committing & delivering for review
+
+These are non-negotiable when working in a worktree — skipping them means the user
+tests the wrong build and the work appears lost:
+
+- **Commit as you go.** After each self-contained change builds + tests green,
+  commit it on the feature branch (don't leave a pile of uncommitted edits at the
+  end). Commit messages end with the `Co-Authored-By` trailer.
+- **Install for the user to verify, don't just build.** A `swift build` or a
+  bundle in the worktree's `dist/` is NOT what the user launches. When a change is
+  meant for the user to check, run `./scripts/install-local.sh` so it lands in
+  `/Applications` (kills the running instance, re-signs, relaunches). Then tell the
+  user it's the installed app they should test.
+- **Verify on the installed build.** Any "this is faster / fixed" claim must be
+  observed on the `/Applications` copy, not the master checkout in the primary
+  working dir.
+
 ## Commands
 
 ```sh

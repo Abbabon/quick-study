@@ -71,6 +71,21 @@ enum OracleText {
 
     private static var cache: [String: NSImage] = [:]
 
+    /// Tokens that show up in almost every card's rules/cost text. Pre-rasterizing these
+    /// at launch keeps the first oracle-text preview from hitching while `ImageRenderer`
+    /// builds each disc on demand.
+    private static let commonTokens: [String] =
+        ["W", "U", "B", "R", "G", "C", "T", "X"] + (0...9).map(String.init)
+
+    /// Best-effort warm-up of the pip cache for the common symbols at the given preview
+    /// size. Idempotent — `pipImage` no-ops on a cache hit. Call once after launch settles.
+    @MainActor
+    static func prewarm(size: CGFloat) {
+        for token in commonTokens {
+            _ = pipImage(ManaCost.pip(for: token), size: size)
+        }
+    }
+
     /// Rasterizes one disc pip. Pip colors are appearance-independent, so a
     /// single cache keyed by glyph + identity + rounded size is safe.
     @MainActor
