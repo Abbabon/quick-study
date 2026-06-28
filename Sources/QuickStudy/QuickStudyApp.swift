@@ -127,6 +127,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.model.checkForAppUpdate()
             }
         }
+
+        // Warm the mana-symbol pip cache for the common glyphs at the preview's font size,
+        // so the first card preview doesn't hitch rasterizing them on demand. Low priority
+        // so it yields to launch work.
+        Task(priority: .low) { @MainActor in
+            OracleText.prewarm(size: UIScale.current().size(13))
+        }
     }
 
     /// Reflects both update kinds (Scryfall card data and the app itself) in the menu-bar
