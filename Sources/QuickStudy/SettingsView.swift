@@ -339,10 +339,12 @@ struct SettingsView: View {
                         }
                     }
             }
+            #if !APPSTORE
             SettingsRow(symbol: "arrow.triangle.2.circlepath", style: TileStyle(0x3E9BFF, 0x1E6FE0),
                         label: "Check for updates automatically") {
                 Toggle("", isOn: $appUpdateAutoCheck).labelsHidden().toggleStyle(.switch)
             }
+            #endif
             SettingsRow(symbol: "textformat.size", style: TileStyle(0x283C8C, 0x7846B4),
                         label: "UI scale", last: true) {
                 HStack(spacing: 10) {
@@ -568,6 +570,7 @@ struct SettingsView: View {
             }
             .padding(.bottom, 10)
 
+            #if !APPSTORE
             SettingsCard {
                 SettingsRow(symbol: "arrow.triangle.2.circlepath", style: TileStyle(0x3E9BFF, 0x1E6FE0),
                             label: "Updates", last: true) {
@@ -577,6 +580,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            #endif
             DisclaimerNote()
         }
     }
@@ -616,6 +620,7 @@ struct SettingsView: View {
         }
     }
 
+    #if !APPSTORE
     @ViewBuilder
     private var appUpdateStatusLabel: some View {
         switch model.appUpdateState {
@@ -651,4 +656,5 @@ struct SettingsView: View {
             Button("Check for Updates") { model.checkForAppUpdate(force: true) }.controlSize(.small)
         }
     }
+    #endif
 }
