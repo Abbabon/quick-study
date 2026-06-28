@@ -251,6 +251,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
+    /// Cmd-Tab into the app, a Dock-icon click, and a fresh launch all bring the app
+    /// forward via activation (Cmd-Tab does NOT trigger `applicationShouldHandleReopen`).
+    /// Surface the Spotlight search panel on activation — unless the user is returning to
+    /// another of our windows (Settings or Play), which should just come forward on their own.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard !panel.isVisible else { return }          // re-entrancy / already-open guard
+        guard !hasVisibleStandardWindow else { return } // let Settings/Play come forward
+        openSearch()
+    }
+
+    /// True when a normal titled window (Settings or Play) is currently visible. The search
+    /// panel is borderless and the status item's window is system-owned, so a visible
+    /// `.titled` window can only be one of our auxiliary windows.
+    private var hasVisibleStandardWindow: Bool {
+        NSApp.windows.contains { $0.isVisible && $0.styleMask.contains(.titled) }
+    }
+
     /// Clicking the Dock icon opens the Spotlight-style search panel.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         openSearch()

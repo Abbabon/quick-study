@@ -77,6 +77,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.setFrame(NSRect(origin: origin, size: target), display: true, animate: true)
     }
 
+    /// Whether the search panel is currently on screen. Used by `AppDelegate` to avoid
+    /// re-showing it on a redundant activation (e.g. the `NSApp.activate` inside `show()`).
+    var isVisible: Bool { panel?.isVisible ?? false }
+
     func toggle() {
         if let panel = panel, panel.isVisible {
             hide()
