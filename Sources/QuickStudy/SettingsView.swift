@@ -160,6 +160,24 @@ private struct Footnote: View {
     }
 }
 
+/// Legal / fan-content disclaimer shown in the About pane. Uses markdown so the
+/// Fan Content Policy and Scryfall links open in the default browser.
+private struct DisclaimerNote: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Quick Study is unofficial Fan Content permitted under Wizards of the Coast's [Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy). Not approved or endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. © Wizards of the Coast LLC.")
+            Text("Magic: The Gathering, card names, mana symbols, and card images are trademarks of and © Wizards of the Coast / Hasbro. Card data and images are provided by [Scryfall](https://scryfall.com/docs/api) under their API terms and cached locally for personal use.")
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(S.textTertiary)
+        .lineSpacing(1)
+        .tint(.secondary)
+        .padding(.horizontal, 6)
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 /// A sidebar navigation row with a colored tile and gradient selection wash.
 private struct NavItem: View {
     let category: Category
@@ -559,7 +577,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            Footnote(text: "Card data & images courtesy of Scryfall. Quick Study is unofficial Fan Content.")
+            DisclaimerNote()
         }
     }
 
