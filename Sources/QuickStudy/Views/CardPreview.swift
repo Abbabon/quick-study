@@ -229,13 +229,13 @@ private struct FlippableCardImage: View {
     private func flip() {
         guard !isFlipping else { return }
         isFlipping = true
-        let id = cardID
         withAnimation(.easeIn(duration: 0.15)) {
             angle = 90
         } completion: {
-            // The selection may have changed mid-flight; onChange already reset the
-            // new card to its front face — don't flip a card the user never flipped.
-            guard id == cardID else { isFlipping = false; return }
+            // isFlipping is @State — reads live storage, unlike the value-captured
+            // `cardID` let. onChange(of: cardID) clears it, so a selection change
+            // mid-flip lands here as false and the stale completion bails.
+            guard isFlipping else { return }
             showingBack.toggle()
             angle = -90
             withAnimation(.easeOut(duration: 0.15)) {
@@ -257,6 +257,7 @@ private struct CardImageView: View {
     let fileURL: URL
     let identity: ColorIdentity
     @State private var image: NSImage?
+    @State private var loadGeneration = 0
 
     var body: some View {
         Group {
@@ -271,7 +272,7 @@ private struct CardImageView: View {
         }
         .onAppear(perform: load)
         // Reused as the selection (or shown face) changes — reload when the key does.
-        .onChange(of: cacheKey) { _, _ in image = nil; load() }
+        .onChange(of: cacheKey) { _, _ in image = nil; loadGeneration += 1; load() }
     }
 
     private func load() {
@@ -281,12 +282,13 @@ private struct CardImageView: View {
         }
         let key = cacheKey
         let url = fileURL
+        let gen = loadGeneration
         Task.detached(priority: .userInitiated) {
             guard FileManager.default.fileExists(atPath: url.path),
                   let img = NSImage(contentsOf: url) else { return }
             ThumbnailCache.store(img, for: key)
             await MainActor.run {
-                if self.cacheKey == key { self.image = img }
+                if self.loadGeneration == gen { self.image = img }
             }
         }
     }

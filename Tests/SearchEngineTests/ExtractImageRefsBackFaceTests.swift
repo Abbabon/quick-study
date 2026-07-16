@@ -27,6 +27,7 @@ final class ExtractImageRefsBackFaceTests: XCTestCase {
     private func writeFixture() throws -> URL {
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("cards-\(UUID().uuidString).json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         try fixture.data(using: .utf8)!.write(to: url)
         return url
     }
