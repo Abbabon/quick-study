@@ -35,7 +35,7 @@ struct CardPreview: View {
     @ViewBuilder
     private func content(card: Card, scale: UIScale) -> some View {
         HStack(alignment: .top, spacing: scale.pad(16)) {
-            CardImageView(id: card.id, identity: card.identity)
+            FlippableCardImage(cardID: card.id, identity: card.identity)
                 .frame(maxWidth: 330, maxHeight: 480)
                 .dsCardShadow()
             VStack(alignment: .leading, spacing: scale.pad(8)) {
@@ -174,13 +174,74 @@ struct CardPreview: View {
 
 }
 
+/// Wraps the card image with a flip affordance for double-faced cards. The rotate
+/// button appears only when the fetcher has downloaded `images/{id}_back.jpg`
+/// (presence on disk is the whole state); flipping runs a Y-axis 3D rotation,
+/// swapping the displayed face at the 90° midpoint so it reads like turning a
+/// physical card.
+private struct FlippableCardImage: View {
+    let cardID: String
+    let identity: ColorIdentity
+    @State private var hasBack = false
+    @State private var showingBack = false
+    @State private var angle: Double = 0
+
+    var body: some View {
+        CardImageView(
+            cacheKey: showingBack ? "\(cardID)_back" : cardID,
+            fileURL: showingBack ? Paths.backImageURL(forCardID: cardID)
+                                 : Paths.imageURL(forCardID: cardID),
+            identity: identity
+        )
+        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
+        .overlay(alignment: .topTrailing) {
+            if hasBack { flipButton }
+        }
+        .onAppear(perform: refresh)
+        .onChange(of: cardID) { _, _ in
+            showingBack = false
+            angle = 0
+            refresh()
+        }
+    }
+
+    private var flipButton: some View {
+        Button(action: flip) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(6)
+                .background(.black.opacity(0.55), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut("f", modifiers: .command)
+        .help(showingBack ? "Show front face (⌘F)" : "Show back face (⌘F)")
+        .padding(8)
+    }
+
+    private func refresh() {
+        hasBack = FileManager.default.fileExists(atPath: Paths.backImageURL(forCardID: cardID).path)
+    }
+
+    private func flip() {
+        withAnimation(.easeIn(duration: 0.15)) {
+            angle = 90
+        } completion: {
+            showingBack.toggle()
+            angle = -90
+            withAnimation(.easeOut(duration: 0.15)) { angle = 0 }
+        }
+    }
+}
+
 /// The large card image in the preview. Reads from the shared `ThumbnailCache` — the same
 /// on-disk file the results/recently-added rows already decoded for their thumbnails — so a
 /// previously-listed card shows instantly. On a miss it decodes off the main thread instead of
 /// blocking the preview's render (these JPEGs are ~100–300 KB and previously decoded
 /// synchronously inside `body` on every re-render).
 private struct CardImageView: View {
-    let id: String
+    let cacheKey: String
+    let fileURL: URL
     let identity: ColorIdentity
     @State private var image: NSImage?
 
@@ -196,23 +257,23 @@ private struct CardImageView: View {
             }
         }
         .onAppear(perform: load)
-        // The preview view is reused as the selection changes — reload when the card does.
-        .onChange(of: id) { _, _ in image = nil; load() }
+        // Reused as the selection (or shown face) changes — reload when the key does.
+        .onChange(of: cacheKey) { _, _ in image = nil; load() }
     }
 
     private func load() {
-        if let cached = ThumbnailCache.cached(id) {
+        if let cached = ThumbnailCache.cached(cacheKey) {
             image = cached
             return
         }
-        let cardID = id
+        let key = cacheKey
+        let url = fileURL
         Task.detached(priority: .userInitiated) {
-            let url = Paths.imageURL(forCardID: cardID)
             guard FileManager.default.fileExists(atPath: url.path),
                   let img = NSImage(contentsOf: url) else { return }
-            ThumbnailCache.store(img, for: cardID)
+            ThumbnailCache.store(img, for: key)
             await MainActor.run {
-                if self.id == cardID { self.image = img }
+                if self.cacheKey == key { self.image = img }
             }
         }
     }
