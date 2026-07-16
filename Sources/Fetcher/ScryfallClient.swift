@@ -259,14 +259,27 @@ private struct ScryfallCard: Decodable {
         }
         return nil
     }
+
+    /// Back-face image URL — only for true DFCs, i.e. cards whose faces carry their
+    /// own `image_uris` (transform / modal_dfc). Split/adventure/flip cards have a
+    /// single top-level image and correctly return nil here.
+    static func backImageURL(forBulkRow raw: [String: Any]) -> String? {
+        guard let faces = raw["card_faces"] as? [[String: Any]], faces.count >= 2,
+              faces[0]["image_uris"] is [String: Any],
+              let backURIs = faces[1]["image_uris"] as? [String: Any],
+              let normal = backURIs["normal"] as? String else { return nil }
+        return normal
+    }
 }
 
-/// A pair of (card-id, image-url) extracted from the raw bulk JSON, used by the
+/// A (card-id, image-url) pair extracted from the raw bulk JSON, used by the
 /// image download phase. We extract these alongside `parseBulk` so we don't have
-/// to store image URLs in SQLite.
+/// to store image URLs in SQLite. `backImageURL` is non-nil only for true
+/// double-faced cards (transform / modal_dfc).
 public struct CardImageRef: Sendable {
     public let id: String
     public let imageURL: String
+    public let backImageURL: String?
 }
 
 public extension ScryfallClient {
@@ -287,7 +300,11 @@ public extension ScryfallClient {
                 continue
             }
             if let imgURL = ScryfallCard.imageURL(forBulkRow: raw) {
-                refs.append(CardImageRef(id: id, imageURL: imgURL))
+                refs.append(CardImageRef(
+                    id: id,
+                    imageURL: imgURL,
+                    backImageURL: ScryfallCard.backImageURL(forBulkRow: raw)
+                ))
             }
         }
         return refs

@@ -58,6 +58,12 @@ public enum Paths {
         imagesDir.appendingPathComponent("\(id).jpg", isDirectory: false)
     }
 
+    /// Back face of a double-faced card. Like the front image, presence on disk is
+    /// the only state — the DB never records back faces.
+    public static func backImageURL(forCardID id: String) -> URL {
+        imagesDir.appendingPathComponent("\(id)_back.jpg", isDirectory: false)
+    }
+
     public static func artURL(forIllustrationID id: String) -> URL {
         artDir.appendingPathComponent("\(id).jpg", isDirectory: false)
     }
