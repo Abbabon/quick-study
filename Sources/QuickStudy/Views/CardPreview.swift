@@ -20,6 +20,14 @@ struct CardPreview: View {
     @AppStorage("showMTGOPrintings") private var showMTGOPrintings: Bool = true
     @AppStorage("showArenaPrintings") private var showArenaPrintings: Bool = true
 
+    // Flip state for double-faced cards lives here (not on the image) so the
+    // flip button can sit in the header controls row without disturbing the
+    // image's layout. `hasBack` is purely "does images/{id}_back.jpg exist".
+    @State private var hasBack = false
+    @State private var showingBack = false
+    @State private var flipAngle: Double = 0
+    @State private var isFlipping = false
+
     var body: some View {
         let scale = UIScale(value: uiScaleValue)
         return Group {
@@ -30,14 +38,27 @@ struct CardPreview: View {
             }
         }
         .padding(scale.pad(16))
+        .onAppear(perform: refreshFlipState)
+        .onChange(of: card?.id) { _, _ in
+            showingBack = false
+            flipAngle = 0
+            isFlipping = false
+            refreshFlipState()
+        }
     }
 
     @ViewBuilder
     private func content(card: Card, scale: UIScale) -> some View {
         HStack(alignment: .top, spacing: scale.pad(16)) {
-            FlippableCardImage(cardID: card.id, identity: card.identity)
-                .frame(maxWidth: 330, maxHeight: 480)
-                .dsCardShadow()
+            CardImageView(
+                cacheKey: showingBack ? "\(card.id)_back" : card.id,
+                fileURL: showingBack ? Paths.backImageURL(forCardID: card.id)
+                                     : Paths.imageURL(forCardID: card.id),
+                identity: card.identity
+            )
+            .rotation3DEffect(.degrees(flipAngle), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
+            .frame(maxWidth: 330, maxHeight: 480)
+            .dsCardShadow()
             VStack(alignment: .leading, spacing: scale.pad(8)) {
                 header(card: card, scale: scale)
                 if let type = card.typeLine {
@@ -65,7 +86,7 @@ struct CardPreview: View {
     /// row so the title always gets the full width (wrapping if it must).
     @ViewBuilder
     private func header(card: Card, scale: UIScale) -> some View {
-        let title = Text(card.name).font(scale.font(17, weight: .bold))
+        let title = Text(displayName(card)).font(scale.font(17, weight: .bold))
         ViewThatFits(in: .horizontal) {
             HStack(spacing: scale.pad(8)) {
                 title.lineLimit(1).fixedSize(horizontal: true, vertical: false)
@@ -82,6 +103,7 @@ struct CardPreview: View {
                     }
                     RarityBadge(rarity: card.rarity, size: scale.size(16))
                     Spacer(minLength: scale.pad(8))
+                    if hasBack { flipButton(scale: scale) }
                     addToListMenu(scale: scale)
                     pinButton(scale: scale)
                 }
@@ -95,8 +117,21 @@ struct CardPreview: View {
             ManaCostView(cost: cost, size: scale.size(16))
         }
         RarityBadge(rarity: card.rarity, size: scale.size(16))
+        if hasBack { flipButton(scale: scale) }
         addToListMenu(scale: scale)
         pinButton(scale: scale)
+    }
+
+    /// Title shown in the header. For double-faced cards (a back image exists)
+    /// this is just the face currently displayed, so the combined
+    /// "Front // Back" name doesn't wrap the header onto several lines.
+    /// Split/adventure cards also have "//" names but no back image — they
+    /// keep the full name.
+    private func displayName(_ card: Card) -> String {
+        guard hasBack else { return card.name }
+        let faces = card.name.components(separatedBy: " // ")
+        guard faces.count > 1 else { return card.name }
+        return showingBack ? faces[1] : faces[0]
     }
 
     private func addToListMenu(scale: UIScale) -> some View {
@@ -115,6 +150,49 @@ struct CardPreview: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Add to list")
+    }
+
+    /// Flip control for double-faced cards. Lives with the other header
+    /// buttons so its appearance never reflows the card image; the 3D flip
+    /// itself is applied to `CardImageView` in `content`.
+    private func flipButton(scale: UIScale) -> some View {
+        Button(action: flip) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(scale.font(14, weight: .medium))
+                .foregroundStyle(showingBack ? DS.accent : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut("f", modifiers: .command)
+        .help(showingBack ? "Show front face (⌘F)" : "Show back face (⌘F)")
+        .accessibilityLabel(showingBack ? "Show front face" : "Show back face")
+    }
+
+    private func refreshFlipState() {
+        guard let id = card?.id else {
+            hasBack = false
+            return
+        }
+        hasBack = FileManager.default.fileExists(atPath: Paths.backImageURL(forCardID: id).path)
+    }
+
+    private func flip() {
+        guard !isFlipping else { return }
+        isFlipping = true
+        withAnimation(.easeIn(duration: 0.15)) {
+            flipAngle = 90
+        } completion: {
+            // isFlipping is @State — reads live storage. onChange(of: card?.id)
+            // clears it, so a selection change mid-flip lands here as false and
+            // the stale completion bails.
+            guard isFlipping else { return }
+            showingBack.toggle()
+            flipAngle = -90
+            withAnimation(.easeOut(duration: 0.15)) {
+                flipAngle = 0
+            } completion: {
+                isFlipping = false
+            }
+        }
     }
 
     private func pinButton(scale: UIScale) -> some View {
@@ -172,80 +250,6 @@ struct CardPreview: View {
         .padding(.top, scale.pad(4))
     }
 
-}
-
-/// Wraps the card image with a flip affordance for double-faced cards. The rotate
-/// button appears only when the fetcher has downloaded `images/{id}_back.jpg`
-/// (presence on disk is the whole state); flipping runs a Y-axis 3D rotation,
-/// swapping the displayed face at the 90° midpoint so it reads like turning a
-/// physical card.
-private struct FlippableCardImage: View {
-    let cardID: String
-    let identity: ColorIdentity
-    @State private var hasBack = false
-    @State private var showingBack = false
-    @State private var angle: Double = 0
-    @State private var isFlipping = false
-
-    var body: some View {
-        // The button sits above the image, not overlaid on it, so it never
-        // covers the card title or art.
-        VStack(alignment: .trailing, spacing: 6) {
-            if hasBack { flipButton }
-            CardImageView(
-                cacheKey: showingBack ? "\(cardID)_back" : cardID,
-                fileURL: showingBack ? Paths.backImageURL(forCardID: cardID)
-                                     : Paths.imageURL(forCardID: cardID),
-                identity: identity
-            )
-            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
-        }
-        .onAppear(perform: refresh)
-        .onChange(of: cardID) { _, _ in
-            showingBack = false
-            angle = 0
-            isFlipping = false
-            refresh()
-        }
-    }
-
-    private var flipButton: some View {
-        Button(action: flip) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(6)
-                .background(.black.opacity(0.55), in: Circle())
-        }
-        .buttonStyle(.plain)
-        .keyboardShortcut("f", modifiers: .command)
-        .help(showingBack ? "Show front face (⌘F)" : "Show back face (⌘F)")
-        .accessibilityLabel(showingBack ? "Show front face" : "Show back face")
-    }
-
-    private func refresh() {
-        hasBack = FileManager.default.fileExists(atPath: Paths.backImageURL(forCardID: cardID).path)
-    }
-
-    private func flip() {
-        guard !isFlipping else { return }
-        isFlipping = true
-        withAnimation(.easeIn(duration: 0.15)) {
-            angle = 90
-        } completion: {
-            // isFlipping is @State — reads live storage, unlike the value-captured
-            // `cardID` let. onChange(of: cardID) clears it, so a selection change
-            // mid-flip lands here as false and the stale completion bails.
-            guard isFlipping else { return }
-            showingBack.toggle()
-            angle = -90
-            withAnimation(.easeOut(duration: 0.15)) {
-                angle = 0
-            } completion: {
-                isFlipping = false
-            }
-        }
-    }
 }
 
 /// The large card image in the preview. Reads from the shared `ThumbnailCache` — the same
