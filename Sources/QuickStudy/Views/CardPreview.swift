@@ -185,6 +185,7 @@ private struct FlippableCardImage: View {
     @State private var hasBack = false
     @State private var showingBack = false
     @State private var angle: Double = 0
+    @State private var isFlipping = false
 
     var body: some View {
         CardImageView(
@@ -201,6 +202,7 @@ private struct FlippableCardImage: View {
         .onChange(of: cardID) { _, _ in
             showingBack = false
             angle = 0
+            isFlipping = false
             refresh()
         }
     }
@@ -216,6 +218,7 @@ private struct FlippableCardImage: View {
         .buttonStyle(.plain)
         .keyboardShortcut("f", modifiers: .command)
         .help(showingBack ? "Show front face (⌘F)" : "Show back face (⌘F)")
+        .accessibilityLabel(showingBack ? "Show front face" : "Show back face")
         .padding(8)
     }
 
@@ -224,12 +227,22 @@ private struct FlippableCardImage: View {
     }
 
     private func flip() {
+        guard !isFlipping else { return }
+        isFlipping = true
+        let id = cardID
         withAnimation(.easeIn(duration: 0.15)) {
             angle = 90
         } completion: {
+            // The selection may have changed mid-flight; onChange already reset the
+            // new card to its front face — don't flip a card the user never flipped.
+            guard id == cardID else { isFlipping = false; return }
             showingBack.toggle()
             angle = -90
-            withAnimation(.easeOut(duration: 0.15)) { angle = 0 }
+            withAnimation(.easeOut(duration: 0.15)) {
+                angle = 0
+            } completion: {
+                isFlipping = false
+            }
         }
     }
 }
