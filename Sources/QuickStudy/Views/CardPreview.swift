@@ -188,15 +188,17 @@ private struct FlippableCardImage: View {
     @State private var isFlipping = false
 
     var body: some View {
-        CardImageView(
-            cacheKey: showingBack ? "\(cardID)_back" : cardID,
-            fileURL: showingBack ? Paths.backImageURL(forCardID: cardID)
-                                 : Paths.imageURL(forCardID: cardID),
-            identity: identity
-        )
-        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
-        .overlay(alignment: .topTrailing) {
+        // The button sits above the image, not overlaid on it, so it never
+        // covers the card title or art.
+        VStack(alignment: .trailing, spacing: 6) {
             if hasBack { flipButton }
+            CardImageView(
+                cacheKey: showingBack ? "\(cardID)_back" : cardID,
+                fileURL: showingBack ? Paths.backImageURL(forCardID: cardID)
+                                     : Paths.imageURL(forCardID: cardID),
+                identity: identity
+            )
+            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
         }
         .onAppear(perform: refresh)
         .onChange(of: cardID) { _, _ in
@@ -219,7 +221,6 @@ private struct FlippableCardImage: View {
         .keyboardShortcut("f", modifiers: .command)
         .help(showingBack ? "Show front face (⌘F)" : "Show back face (⌘F)")
         .accessibilityLabel(showingBack ? "Show front face" : "Show back face")
-        .padding(8)
     }
 
     private func refresh() {
