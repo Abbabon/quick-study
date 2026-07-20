@@ -1,5 +1,7 @@
 # Mac App Store distribution
 
+> Step-by-step submission instructions: [appstore-checklist.md](appstore-checklist.md).
+
 QuickStudy ships on **two tracks** from one source tree:
 
 | Track | Build | Signing | Self-update |
