@@ -22,16 +22,70 @@ Confirm:
 The sandboxed build starts with an **empty database** — the container is separate
 from direct-install data under the real `~/Library`. That's expected.
 
-## 2. Apple Developer portal setup ([developer.apple.com/account](https://developer.apple.com/account))
+## 2. Apple Developer portal setup — web browser path
 
-1. **Certificates** — easiest via Xcode: *Settings → Accounts → your Apple ID →
-   Manage Certificates → +* and create both **Apple Distribution** and
-   **Mac Installer Distribution**. (Or via the web portal with a CSR from Keychain Access.)
-2. **Identifier** — *Identifiers → + → App IDs → App*, bundle ID **explicit**
-   `com.abbabon.quickstudy`, no extra capabilities needed.
-3. **Provisioning profile** — *Profiles → + → Distribution → Mac App Store Connect*,
-   select the App ID and the Apple Distribution cert, download as
-   `QuickStudy.provisionprofile`.
+Everything happens at
+[developer.apple.com/account/resources](https://developer.apple.com/account/resources)
+(Certificates, Identifiers & Profiles). One local prerequisite: a Certificate
+Signing Request, because the web portal can't generate the private key for you.
+
+### 2a. Create a CSR in Keychain Access (once — reused for both certificates)
+
+1. Open **Keychain Access** (Spotlight → "Keychain Access").
+2. Menu bar: *Keychain Access → Certificate Assistant → Request a Certificate
+   From a Certificate Authority…*
+3. Fill in: **User Email Address** = your Apple ID email; **Common Name** = your
+   name; **CA Email** = leave empty; select **"Saved to disk"**.
+4. Save `CertificateSigningRequest.certSigningRequest` to `~/Downloads`.
+
+This silently creates the matching private key in your login keychain — the
+downloaded certificates only become usable identities on this Mac because that
+key is here. Don't delete it, and export a backup later if you switch machines.
+
+### 2b. Certificates (sidebar: *Certificates* → blue **+**)
+
+Create **two**, same CSR for both:
+
+1. **Apple Distribution** (under "Software") — signs the `.app`.
+   Continue → upload the CSR → Continue → **Download** `distribution.cer` →
+   double-click it to install into the keychain.
+2. **+** again → **Mac Installer Distribution** — signs the `.pkg`.
+   Same CSR → Download `macinstaller.cer` → double-click to install.
+
+Verify both landed as usable identities:
+
+```sh
+security find-identity -v | grep -E "Apple Distribution|Installer"
+```
+
+Both lines must appear; if a cert shows in Keychain Access but not here, the
+private key is missing (wrong Mac / wrong keychain — redo the CSR on this Mac).
+
+### 2c. App ID (sidebar: *Identifiers* → **+**)
+
+1. Select **App IDs** → Continue → type **App** → Continue.
+2. **Description**: `QuickStudy` (portal-only label).
+3. **Bundle ID**: select **Explicit**, enter `com.abbabon.quickstudy` — must
+   match `Resources/Info.plist` exactly.
+4. **Capabilities**: tick nothing (App Sandbox isn't a portal capability; the
+   entitlements files handle it). Continue → **Register**.
+
+### 2d. Provisioning profile (sidebar: *Profiles* → **+**)
+
+1. Under **Distribution**, select **Mac App Store Connect** (older portal UI
+   calls it "Mac App Store") → Continue.
+2. If asked for profile type, pick **Mac** (not Mac Catalyst).
+3. **App ID**: `QuickStudy (com.abbabon.quickstudy)` → Continue.
+4. **Certificate**: select the Apple Distribution cert from 2b → Continue.
+5. **Provisioning Profile Name**: `QuickStudy Mac App Store` → **Generate** →
+   **Download**; it saves as something like `QuickStudy_Mac_App_Store.provisionprofile`.
+
+Sanity-check the profile matches the bundle ID and your team:
+
+```sh
+security cms -D -i ~/Downloads/QuickStudy_Mac_App_Store.provisionprofile \
+  | grep -E -A1 "TeamIdentifier|application-identifier"
+```
 
 ## 3. App Store Connect record ([appstoreconnect.apple.com](https://appstoreconnect.apple.com))
 
