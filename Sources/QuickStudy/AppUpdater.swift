@@ -1,6 +1,18 @@
 import AppKit
 import Foundation
 
+#if APPSTORE
+
+/// App Store builds ship no self-updater — the App Store delivers updates, and the
+/// sandbox forbids the helper processes (`ditto`/`codesign`/`xattr`/`brew`/`open`)
+/// the unsandboxed path relies on. Only `InstallKind` survives so the shared
+/// `AppModel.AppUpdateState` enum still compiles; the install paths are gone.
+enum AppUpdater {
+    enum InstallKind: Equatable { case homebrew, manual }
+}
+
+#else
+
 /// Installs app updates without a third-party framework. Two paths, chosen by how the app
 /// was installed:
 ///
@@ -169,3 +181,5 @@ enum AppUpdater {
         return process.terminationStatus
     }
 }
+
+#endif

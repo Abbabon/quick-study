@@ -731,6 +731,9 @@ final class AppModel: ObservableObject {
     /// Pass `force` to bypass both the auto-check toggle and the throttle (e.g. the Settings
     /// "Check for updates" button and the first check at launch).
     func checkForAppUpdate(force: Bool = false) {
+        #if APPSTORE
+        return // App Store builds receive updates through the App Store, not GitHub.
+        #else
         guard AppUpdater.isRunningFromAppBundle else { return } // no bundle under `swift run`
         guard let current = AppUpdateChecker.currentVersion() else { return }
         let defaults = UserDefaults.standard
@@ -773,12 +776,16 @@ final class AppModel: ObservableObject {
                 self.appUpdateState = .available(version: release.version, kind: kind)
             }
         }
+        #endif
     }
 
     /// Acts on the current `appUpdateState`: relaunch into the staged build (manual),
     /// run `brew upgrade` (Homebrew), or open the release page (manual with no zip asset).
     /// On success the app terminates and a detached helper completes the install.
     func installOrRelaunch() {
+        #if APPSTORE
+        return // No self-install path in sandboxed App Store builds.
+        #else
         do {
             switch appUpdateState {
             case .readyToRelaunch:
@@ -799,6 +806,7 @@ final class AppModel: ObservableObject {
         } catch {
             appUpdateState = .failed(error.localizedDescription)
         }
+        #endif
     }
 
     /// User dismissed the app-update prompt — suppress it until a strictly newer version.
