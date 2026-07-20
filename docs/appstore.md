@@ -45,20 +45,21 @@ The self-update subsystem spawns `ditto`/`codesign`/`xattr`/`brew`/`open` — al
    QS_INSTALLER_IDENTITY="3rd Party Mac Developer Installer: … (TEAMID)" \
    QS_PROVISION_PROFILE=/path/to/QuickStudy.provisionprofile \
    ./scripts/build-appstore.sh
-   # add QS_UPLOAD=1 QS_APPLE_ID=… QS_APP_PASSWORD=… to upload, or use Transporter.
+   # then upload dist-appstore/QuickStudy.pkg with Apple's Transporter app
+   # (or QS_UPLOAD=1 QS_APPLE_ID=… QS_APP_PASSWORD=… for the deprecated altool path).
    ```
+   The script reads the Team ID out of the provisioning profile and merges
+   `com.apple.application-identifier` / `com.apple.developer.team-identifier`
+   into the app's signing entitlements — required for App Store validation
+   when a profile is embedded.
 
 ## Sandbox runtime verification (do before submitting)
 
 Ad-hoc signing **with** the entitlements enforces the sandbox locally, so you can test without an upload:
 
 ```sh
-swift build -c release -Xswiftc -DAPPSTORE
-BIN=$(swift build -c release -Xswiftc -DAPPSTORE --show-bin-path)
-# assemble a .app (see build-app.sh), then:
-codesign --force --options runtime --entitlements Resources/mtg-fetcher.entitlements --sign - dist/QuickStudy.app/Contents/MacOS/mtg-fetcher
-codesign --force --options runtime --entitlements Resources/QuickStudy.entitlements --sign - dist/QuickStudy.app
-open dist/QuickStudy.app
+./scripts/build-appstore.sh --adhoc
+open dist-appstore/QuickStudy.app
 ```
 
 Then exercise the app and confirm:
