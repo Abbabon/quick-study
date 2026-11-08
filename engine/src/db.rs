@@ -1,5 +1,6 @@
-//! SQLite store. Schema = GRDB migrations v1..v9 (frozen), recorded in GRDB's own
-//! `grdb_migrations` ledger so the Swift app and this crate each skip what the other applied.
+//! SQLite store and migrations. The ledger keeps the `grdb_migrations` name GRDB used, so databases
+//! created before the Swift side dropped GRDB are not migrated again. v1..v9 are what GRDB applied;
+//! new schema changes are added here only.
 use crate::{Result, lower, scryfall::{Artwork, Card, Printing, SetInfo}, today};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashSet;

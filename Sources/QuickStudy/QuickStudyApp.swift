@@ -54,6 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return "cards=\(engine.cardCount()) total=\(r.total) top=\(r.hits.prefix(3).map(\.name).joined(separator: " | "))"
         }
 
+        Perf.installDatabaseHook { [weak self] write in await self?.model.debugDatabaseReport(write: write) ?? ["no model"] }
+
         model.onOpenSettings = { [weak self] in self?.settingsWindow.show() }
         model.onOpenGame = { [weak self] in self?.gameWindow.show() }
 

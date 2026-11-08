@@ -246,6 +246,29 @@ extension Perf {
     }
 }
 
+// MARK: - Database smoke hook (debug/verification only, off unless opted in)
+
+extension Perf {
+    /// Logs what the Rust database layer returns (counts, lists, a detail load with timing) to verify
+    /// an installed or sandboxed build without driving the GUI. Read-only unless the `.write` ping is
+    /// sent, which creates a list "debug-list" holding the first Recently Added card (sandbox checks only).
+    ///
+    ///     open -a QuickStudy --args -debugDB YES
+    ///     notifyutil -p com.abbabon.quickstudy.debug.db         # read-only report
+    ///     notifyutil -p com.abbabon.quickstudy.debug.db.write   # + create/fill a scratch list
+    static func installDatabaseHook(report: @escaping (Bool) async -> [String]) {
+        guard UserDefaults.standard.bool(forKey: "debugDB") else { return }
+        var t1: Int32 = 0, t2: Int32 = 0
+        for (name, write, token) in [("com.abbabon.quickstudy.debug.db", false, 1), ("com.abbabon.quickstudy.debug.db.write", true, 2)] {
+            let handler: (Int32) -> Void = { _ in
+                Task { for line in await report(write) { log.notice("debug.db \(line, privacy: .public)") } }
+            }
+            if token == 1 { notify_register_dispatch(name, &t1, .main, handler) } else { notify_register_dispatch(name, &t2, .main, handler) }
+        }
+        log.notice("debug database hook armed")
+    }
+}
+
 // MARK: - Search smoke hook (debug/verification only, off unless opted in)
 
 extension Perf {

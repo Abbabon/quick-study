@@ -30,13 +30,13 @@ Two executables, one SQLite database, one image directory. The app spawns the fe
 
 ### 2.1 `Shared` (Swift library)
 
-Used by both executables. Keeps every cross-boundary contract in one place.
+Swift-side view types and macOS helpers used by the app. No database code: schema, migrations, reads and list edits are all in `engine/`.
 
 | File | Purpose |
 |---|---|
 | `Sources/Shared/Paths.swift` | Locations on disk: support dir, images dir, DB URL, log file. Creates dirs lazily. |
-| `Sources/Shared/Card.swift` | `Card` (full row) and `Card.Mini` (id+name, loaded in-memory for search). |
-| `Sources/Shared/CardStore.swift` | GRDB-backed SQLite reader/writer. Migrations, upsert, image-path setter, meta kv. |
+| `Sources/Shared/Card.swift` | `Card` (detail), `Card.Mini` (search/list row), `Card.Recent`, `Card.Printing`. |
+| `Sources/Shared/CardList.swift`, `Artwork.swift`, `GameEngine.swift` | List and artwork view types; the pure game engine. |
 
 ### 2.2 `mtg-fetcher` (CLI executable)
 
@@ -63,7 +63,9 @@ CLI flags:
 | `engine/src/fetch.rs` | Phase orchestration (`json` → `ingest` → `sets`/`printings` → `images`; `--artwork`). |
 | `engine/src/scryfall.rs` | Bulk-data/sets API client, streaming JSONL parser, wire → record mapping. |
 | `engine/src/images.rs` | Bounded-concurrency (32) image downloader, batched `image_path` writes. |
-| `engine/src/db.rs` | Schema v1–v9 migrations (GRDB ledger-compatible), upserts, reconcile. |
+| `engine/src/db.rs` | Schema v1–v9 migrations (keeps GRDB's `grdb_migrations` ledger name), meta kv, upserts, reconcile. |
+| `engine/src/store.rs` | App reads (card detail, printings, recently added, artworks, counts) and card-list CRUD. |
+| `engine/src/update.rs` | Scryfall "new cards" check: bulk-index `updated_at` vs the ingested baseline. |
 | `engine/src/progress.rs` | Throttled NDJSON-to-stdout + log-file mirror. |
 | `engine/src/paths.rs` | Support/log dirs, legacy migration, `QUICKSTUDY_DATA_DIR` override. |
 
@@ -75,7 +77,7 @@ Menu-bar-resident app that also keeps a Dock icon at all times (`LSUIElement = N
 |---|---|
 | `Sources/QuickStudy/QuickStudyApp.swift` | `@main`, `AppDelegate`, status-bar menu, global hotkey wiring via `KeyboardShortcuts`. |
 | `Sources/QuickStudy/PanelController.swift` | Borderless `NSPanel` with `NSVisualEffectView` (`.hudWindow`). Floating, non-activating, auto-dismisses on focus loss / Esc. |
-| `Sources/QuickStudy/AppModel.swift` | `@MainActor ObservableObject`. Holds query, results, selection, refresh state. Owns the Rust `SearchIndex`, `CardStore`, `FetcherProcess`, `NSCache` for detail rows. |
+| `Sources/QuickStudy/AppModel.swift` | `@MainActor ObservableObject`. Holds query, results, selection, refresh state. Owns the Rust `SearchIndex` and `Database` (UniFFI), `FetcherProcess`, `NSCache` for detail rows. |
 | `engine/src/search.rs`, `engine/src/query.rs`, `engine/src/ffi.rs` | In-memory fuzzy ranker + query parser in Rust, exposed to Swift via UniFFI (see §3). |
 | `Sources/QuickStudy/FetcherProcess.swift` | Spawns `mtg-fetcher` via `Process`, parses NDJSON from stdout, calls back on the main actor. |
 | `Sources/QuickStudy/Views/SearchPanel.swift` | Top-level panel content: search field + result body. Handles ↑↓/Enter/Esc. |
@@ -144,7 +146,7 @@ CREATE TABLE meta (
 -- known keys: last_refresh, bulk_updated_at
 ```
 
-WAL journal mode, `synchronous = NORMAL`. Migrations via GRDB's `DatabaseMigrator`.
+WAL journal mode, `synchronous = NORMAL`. Migrations run in Rust (`engine/src/db.rs`) when `Database.open` / the fetcher opens the file; the ledger table is still called `grdb_migrations`. The app's `Database` object keeps a read-only and a write connection (WAL, alongside the fetcher process); see CLAUDE.md for the FFI surface.
 
 ## 4a. Card printings & set markings
 
@@ -273,7 +275,7 @@ The app reads stdout incrementally via `Pipe.readabilityHandler`, buffers, split
 
 - **Image download** is fully resumable: skips files already on disk; failures are silent (next refresh retries).
 - **Bulk JSON** is re-downloaded each refresh — Scryfall publishes daily.
-- **Ingest** uses `INSERT … ON CONFLICT(id) DO UPDATE`, so partial runs are safe to retry. After a *complete* ingest it runs `CardStore.reconcileCards(keepingIDs:)`, deleting `cards` rows the current bulk no longer produces — orphans left when Scryfall changes an oracle card's representative printing `id`, and junk layouts an older fetcher ingested before they were filtered. List entries pointing at a removed row are remapped onto the surviving same-name card first (so wishlists/decks survive an id change); entries with no survivor are dropped. Reconcile runs only with the full, successfully-parsed id set in hand, never on a partial run.
+- **Ingest** uses `INSERT … ON CONFLICT(id) DO UPDATE`, so partial runs are safe to retry. After a *complete* ingest it runs `db::reconcile_cardsCards(keepingIDs:)`, deleting `cards` rows the current bulk no longer produces — orphans left when Scryfall changes an oracle card's representative printing `id`, and junk layouts an older fetcher ingested before they were filtered. List entries pointing at a removed row are remapped onto the surviving same-name card first (so wishlists/decks survive an id change); entries with no survivor are dropped. Reconcile runs only with the full, successfully-parsed id set in hand, never on a partial run.
 - **Search engine** rebuilds its in-memory index on `AppModel.refreshDBState()` after any refresh.
 
 ## 9. Suggested subtask split for future iterations
@@ -282,8 +284,8 @@ Each row below is independently shippable:
 
 | # | Subtask | Files |
 |---|---|---|
-| A | Multi-printing picker — arrow through art variants | `CardStore`, `CardPreview`, schema additions |
-| B | Oracle-text full-text search via FTS5 | `CardStore` migration, `SearchEngine` query mode toggle |
+| A | Multi-printing picker — arrow through art variants | `engine/src/store.rs`, `CardPreview`, schema additions |
+| B | Oracle-text full-text search via FTS5 | `engine/src/db.rs` migration, search query mode toggle |
 | C | Saved searches / favorites | new `favorites` table, list view |
 | D | Mana symbol rendering (replace `{R}` etc. with images) | `CardPreview` text formatter, `Resources/symbols/` |
 | E | Deck builder pane | new view, `decks` table |
