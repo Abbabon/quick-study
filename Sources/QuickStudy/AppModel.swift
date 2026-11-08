@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import AppKit
 import Shared
+import EngineBindings
 
 /// Single observable source of truth for the panel UI.
 @MainActor
@@ -65,7 +66,7 @@ final class AppModel: ObservableObject {
     /// State of the app self-update flow (separate from the card-data update above).
     @Published var appUpdateState: AppUpdateState = .none
 
-    private(set) var engine = SearchEngine()
+    private(set) var engine = SearchIndex.empty()
     let fetcher = FetcherProcess()
     private var store: CardStore?
     private let detailCache = NSCache<NSString, CachedCard>()
@@ -179,7 +180,7 @@ final class AppModel: ObservableObject {
             lastRefresh = try? store.meta("last_refresh")
             if n == 0 {
                 dbState = .empty
-                engine.load([], sets: [], filterFields: [:])
+                engine = SearchIndex.empty()
                 recentlyAdded = []
                 reloadLists()
                 refreshImageCacheSize()
@@ -206,12 +207,9 @@ final class AppModel: ObservableObject {
         Task.detached(priority: .userInitiated) { [weak self] in
             let state = Perf.signposter.beginInterval("db.load")
             let t0 = Perf.now()
-            let minis = (try? store.loadMinis()) ?? []
-            let sets = (try? store.loadSetIndex()) ?? []
-            let fields = (try? store.loadFilterFields()) ?? [:]
-            // Build the search index here too — it sorts/prepares all 35k names, which used to
-            // run on the main actor inside `applyLoadedDB`.
-            let engine = SearchEngine(minis: minis, sets: sets, filterFields: fields)
+            // The Rust engine reads the DB itself (read-only) and builds the search index —
+            // keep it off the main actor, it prepares all 35k names plus the filter fields.
+            let engine = (try? SearchIndex.open(dbPath: Paths.databaseURL.path)) ?? SearchIndex.empty()
             let recents = (try? store.recentlyAdded()) ?? []
             let artCount = (try? store.artworkCount()) ?? 0
             Perf.signposter.endInterval("db.load", state)
@@ -233,7 +231,7 @@ final class AppModel: ObservableObject {
 
     /// Applies the results of `loadEngineInBackground` and marks the DB ready.
     @MainActor
-    private func applyLoadedDB(engine: SearchEngine, recents: [Card.Recent], artCount: Int) {
+    private func applyLoadedDB(engine: SearchIndex, recents: [Card.Recent], artCount: Int) {
         self.engine = engine
         recentlyAdded = recents
         reloadLists()
@@ -262,13 +260,12 @@ final class AppModel: ObservableObject {
         }
         selectedRecent = nil
         let t0 = Perf.now()
-        let parsed = QueryParser.parse(query)
-        let counted = engine.searchCounted(name: parsed.name, filters: parsed.filters)
+        let counted = engine.search(query: query)
         Perf.untilIdle("keystroke", since: start,
                        detail: String(format: "toSearch=%.2fms search=%.2fms len=%d total=%d", (t0 - start) * 1000,
-                                      (Perf.now() - t0) * 1000, query.count, counted.total))
-        results = counted.matches
-        totalMatchCount = counted.total
+                                      (Perf.now() - t0) * 1000, query.count, Int(counted.total)))
+        results = counted.hits.map(\.mini)
+        totalMatchCount = Int(counted.total)
         if let first = results.first, selectedID == nil || !results.contains(where: { $0.id == selectedID }) {
             select(first.id)
         } else if results.isEmpty {

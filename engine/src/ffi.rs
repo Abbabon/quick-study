@@ -48,4 +48,9 @@ impl SearchIndex {
         let r = self.0.search(&query, DEFAULT_LIMIT);
         SearchResult { hits: r.hits, total: r.total as u32 }
     }
+
+    /// Plain name ranking with no filter syntax and a caller-chosen limit (autocomplete).
+    pub fn search_name(&self, name: String, limit: u32) -> Vec<Hit> {
+        self.0.search_counted(&name, &[], limit as usize).hits
+    }
 }
