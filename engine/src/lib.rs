@@ -4,7 +4,9 @@ pub mod fetch;
 pub mod images;
 pub mod paths;
 pub mod progress;
+pub mod query;
 pub mod scryfall;
+pub mod search;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -29,3 +31,8 @@ pub fn iso_now() -> String {
         ))
         .unwrap()
 }
+
+#[cfg(feature = "ffi")]
+mod ffi;
+#[cfg(feature = "ffi")]
+uniffi::setup_scaffolding!();

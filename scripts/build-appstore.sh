@@ -59,14 +59,15 @@ if [[ "$ADHOC" == "0" ]]; then
     fi
 fi
 
+echo "==> Building Rust engine (XCFramework + mtg-fetcher, $CONFIG)…"
+cd "$ROOT"
+FETCHER="$("$ROOT/scripts/build-engine.sh" "$CONFIG")"
+
 echo "==> Building Swift package ($CONFIG, -DAPPSTORE)…"
 cd "$ROOT"
 swift build -c "$CONFIG" -Xswiftc -DAPPSTORE
 
 BIN_DIR="$(swift build -c "$CONFIG" -Xswiftc -DAPPSTORE --show-bin-path)"
-
-echo "==> Building Rust mtg-fetcher ($CONFIG)…"
-FETCHER="$("$ROOT/scripts/build-fetcher.sh" "$CONFIG")"
 
 echo "==> Assembling app bundle at $APP"
 rm -rf "$DIST"

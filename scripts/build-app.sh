@@ -10,14 +10,15 @@ APP_NAME="QuickStudy"
 DIST="$ROOT/dist"
 APP="$DIST/$APP_NAME.app"
 
+echo "==> Building Rust engine (XCFramework + mtg-fetcher, $CONFIG)…"
+cd "$ROOT"
+FETCHER="$("$ROOT/scripts/build-engine.sh" "$CONFIG")"
+
 echo "==> Building Swift package ($CONFIG)…"
 cd "$ROOT"
 swift build -c "$CONFIG"
 
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
-
-echo "==> Building Rust mtg-fetcher ($CONFIG)…"
-FETCHER="$("$ROOT/scripts/build-fetcher.sh" "$CONFIG")"
 
 echo "==> Assembling app bundle at $APP"
 rm -rf "$APP"
