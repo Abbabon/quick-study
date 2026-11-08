@@ -60,10 +60,12 @@ CLI flags:
 
 | File | Purpose |
 |---|---|
-| `Sources/Fetcher/Fetcher.swift` | `@main`, orchestrates the four phases. |
-| `Sources/Fetcher/ScryfallClient.swift` | Bulk-data API client + JSON parser. |
-| `Sources/Fetcher/ImageDownloader.swift` | Actor with bounded concurrency. |
-| `Sources/Fetcher/ProgressEmitter.swift` | NDJSON-to-stdout + log-file mirror. |
+| `engine/src/fetch.rs` | Phase orchestration (`json` → `ingest` → `sets`/`printings` → `images`; `--artwork`). |
+| `engine/src/scryfall.rs` | Bulk-data/sets API client, streaming JSONL parser, wire → record mapping. |
+| `engine/src/images.rs` | Bounded-concurrency (32) image downloader, batched `image_path` writes. |
+| `engine/src/db.rs` | Schema v1–v9 migrations (GRDB ledger-compatible), upserts, reconcile. |
+| `engine/src/progress.rs` | Throttled NDJSON-to-stdout + log-file mirror. |
+| `engine/src/paths.rs` | Support/log dirs, legacy migration, `QUICKSTUDY_DATA_DIR` override. |
 
 ### 2.3 `QuickStudy` (SwiftUI app executable)
 

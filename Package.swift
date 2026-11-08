@@ -6,7 +6,6 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "QuickStudy", targets: ["QuickStudy"]),
-        .executable(name: "mtg-fetcher", targets: ["Fetcher"]),
         .library(name: "Shared", targets: ["Shared"]),
     ],
     dependencies: [
@@ -22,11 +21,6 @@ let package = Package(
             path: "Sources/Shared"
         ),
         .executableTarget(
-            name: "Fetcher",
-            dependencies: ["Shared"],
-            path: "Sources/Fetcher"
-        ),
-        .executableTarget(
             name: "QuickStudy",
             dependencies: [
                 "Shared",
@@ -36,7 +30,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SearchEngineTests",
-            dependencies: ["QuickStudy", "Shared", "Fetcher"],
+            dependencies: ["QuickStudy", "Shared"],
             path: "Tests/SearchEngineTests"
         ),
     ]

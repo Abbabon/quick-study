@@ -1,6 +1,6 @@
 # QuickStudy → Rust engine migration plan
 
-> Status: **post-grill, awaiting confirmation** · 2026-11-08 · baseline `master` @ 865d2f2 (v0.6.1-dev)
+> Status: **Stage 0 and Stage 1 done; stage 2 next** (was: post-grill, awaiting confirmation) · 2026-11-08 · baseline `master` @ 865d2f2 (v0.6.1-dev)
 
 ## Goal
 
@@ -67,6 +67,17 @@ Rust is a goal in its own right, not only a perf fix.
 5. **Exit:** Q16 targets met on the installed build, with numbers committed. Record in the baseline doc whether search alone was ever the bottleneck.
 
 ## Stage 1: `engine/` crate + Rust `mtg-fetcher`
+
+> **Status: done** (branch `feat/rust-stage-1-fetcher`). Parity gate: zero `.dump` diff between the Swift and Rust fetchers, both on a fresh DB (oracle → printings → artwork) and on a copy of the real DB seeded with stale cards, list entries and a future-dated `date_added`; the downloaded bulk files are also byte-identical (`flate2` vs `/usr/bin/gunzip`). Sandbox smoke test (`build-appstore.sh --adhoc`, refresh + bounded image download inside the container) green.
+>
+> | Measure (this machine) | Swift | Rust |
+> |---|---|---|
+> | Oracle refresh (`--no-images`, fresh DB) | 3.5 s, 548 MB RSS | 1.8 s, 58 MB |
+> | `--printings` run | 11.3 s, 1.5 GB RSS | 5.9 s, 57 MB |
+> | `--artwork` | 8.3 s, 733 MB | 2.0 s, 47 MB |
+> | 1,381 images (8 vs 32 concurrent) | 13.4 s | 4.6 s |
+>
+> Deliberately reproduced Swift behavior: `printings` is upsert-only (stale rows are never reconciled, so a long-lived DB keeps ~250 rows more than the phase total); `artworks` upsert collapses duplicate `illustration_id`s (fresh DB: 52,215 rows vs a 52,277 phase total). `QUICKSTUDY_DATA_DIR` (both Swift `Paths` and Rust) relocates data for scratch/parity runs.
 
 ### Scaffold
 
