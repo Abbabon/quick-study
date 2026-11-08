@@ -62,7 +62,7 @@ impl SearchIndex {
 fn db_err(e: crate::Error) -> EngineError { EngineError::Db(e.to_string()) }
 
 /// The app's database: opens (and migrates) the SQLite file, then serves reads and list edits.
-/// Two connections in WAL mode (like GRDB's queue + the separate fetcher process): reads never
+/// Two connections in WAL mode (alongside the separate fetcher process): reads never
 /// wait behind a list write. Every call blocks, so call it off the main thread unless it is a
 /// single tiny list edit.
 #[derive(uniffi::Object)]

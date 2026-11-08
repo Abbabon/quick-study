@@ -19,7 +19,7 @@ final class AppModel: ObservableObject {
     @Published var selectedID: String?
     @Published var selectedCard: Card?
     /// Printings of the selected card, for the preview's Printings list. Loaded lazily on
-    /// selection from `CardStore.printings(forOracleID:)`.
+    /// selection from `Database.printings(oracleId:)`.
     @Published var selectedPrintings: [Card.Printing] = []
     @Published var pinned: [Card.Mini] = []
     /// User-curated lists (durable, SQLite-backed). `activeListID` is the "current" list
@@ -351,6 +351,25 @@ final class AppModel: ObservableObject {
     private nonisolated static func printings(for card: Card, store: Database) -> [Card.Printing] {
         guard let oid = card.oracleID else { return [] }
         return ((try? store.printings(oracleId: oid)) ?? []).map(\.printing)
+    }
+
+    /// `-debugDB` verification (see `Perf.installDatabaseHook`).
+    func debugDatabaseReport(write: Bool) async -> [String] {
+        guard let store else { return ["no database"] }
+        var out = ["cards=\(totalCards) artworks=\(artworkCount) lastRefresh=\(lastRefresh ?? "nil") recents=\(recentlyAdded.count)"]
+        out += lists.map { "list \($0.name) items=\($0.itemCount)" }
+        for name in ["plains", "lightning bolt", "æther vial", "delver of secrets"] {
+            guard let hit = engine.search(query: name).hits.first else { out.append("detail \(name): no hit"); continue }
+            let t0 = Perf.now()
+            let loaded = await Self.loadDetail(id: hit.id, store: store)
+            let ms = (Perf.now() - t0) * 1000
+            out.append("detail \(hit.name): printings=\(loaded?.printings.count ?? -1) \(String(format: "%.2f", ms)) ms")
+        }
+        if write, let id = createList(named: "debug-list") {
+            if let first = recentlyAdded.first { addCard(first.id, toList: id) }
+            out.append("wrote list debug-list \(id)")
+        }
+        return out
     }
 
     func selectNext() {
