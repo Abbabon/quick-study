@@ -19,7 +19,7 @@ BINDINGS="$ROOT/Sources/EngineBindings"
 
 # Cargo may not be on PATH in non-interactive shells (rustup installs to ~/.cargo/bin).
 export PATH="$HOME/.cargo/bin:$PATH"
-# Make the bundled C code (SQLite etc.) target the app's macOS 14 instead of the SDK's, or the
+# Make any bundled C code target the app's macOS 14 instead of the SDK's, or the
 # SwiftPM link warns. Not MACOSX_DEPLOYMENT_TARGET: that breaks fresh builds of proc-macro crates
 # ("can't find crate for time_macros") with the macOS 27 toolchain.
 export CFLAGS_aarch64_apple_darwin="-mmacosx-version-min=14.0"
