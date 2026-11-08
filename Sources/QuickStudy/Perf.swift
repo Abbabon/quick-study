@@ -129,7 +129,8 @@ extension Perf {
     /// Each run opens the panel, types a few queries as real key events (through NSTextView,
     /// the binding and SwiftUI, like the keyboard), deletes them, and hides the panel: ~10 s.
     static func installReplayHook(show: @escaping () -> Void, hide: @escaping () -> Void,
-                                  reset: @escaping () -> Void, window: @escaping () -> NSWindow?) {
+                                  reset: @escaping () -> Void, window: @escaping () -> NSWindow?,
+                                  setQuery: @escaping (String) -> Void) {
         guard UserDefaults.standard.bool(forKey: "perfReplay") else { return }
         var token: Int32 = 0
         let status = notify_register_dispatch("com.abbabon.quickstudy.perf.replay", &token, .main) { _ in
@@ -137,6 +138,48 @@ extension Perf {
             MainActor.assumeIsolated { replay(show: show, hide: hide, reset: reset, window: window) }
         }
         log.notice("perf replay armed status=\(status, privacy: .public)")
+        var benchToken: Int32 = 0
+        notify_register_dispatch("com.abbabon.quickstudy.perf.bench", &benchToken, .main) { _ in
+            MainActor.assumeIsolated { bench(show: show, hide: hide, reset: reset, window: window, setQuery: setQuery) }
+        }
+    }
+
+    /// Synchronous variant for low-noise A/B on a busy machine: sets the query, forces SwiftUI
+    /// update + layout + display + commit inline, and keeps the minimum main-thread CPU per step
+    /// over 5 repeats (contention only ever adds time). Blocks the main thread ~1–2 s.
+    private static func bench(show: () -> Void, hide: () -> Void, reset: () -> Void,
+                              window: () -> NSWindow?, setQuery: (String) -> Void) {
+        reset(); show()
+        guard let win = window() else { return }
+        func render() {
+            for _ in 0..<2 {   // second pass: the search runs in the field's onChange
+                CATransaction.flush()
+                win.layoutIfNeeded()
+                win.displayIfNeeded()
+                CATransaction.flush()
+            }
+        }
+        render()
+        var steps: [String] = []
+        for w in ["lightning bolt", "llanowar elves", "sol ring"] {
+            for i in 1...w.count { steps.append(String(w.prefix(i))) }
+            for i in stride(from: w.count - 1, through: 0, by: -1) { steps.append(String(w.prefix(i))) }
+        }
+        var best = Array(repeating: UInt64.max, count: steps.count)
+        for _ in 0..<5 {
+            for (k, q) in steps.enumerated() {
+                let c0 = threadCPU()
+                setQuery(q)
+                render()
+                best[k] = min(best[k], threadCPU() - c0)
+            }
+        }
+        let slow = zip(steps, best).sorted { $0.1 > $1.1 }.prefix(8)
+            .map { "\($0.0)=\(String(format: "%.1f", Double($0.1) / 1e6))" }.joined(separator: " ")
+        log.notice("perf bench slowest \(slow, privacy: .public)")
+        let ms = best.map { Double($0) / 1e6 }.sorted()
+        log.notice("perf bench steps=\(ms.count, privacy: .public) p50=\(String(format: "%.2f", ms[ms.count / 2]), privacy: .public)ms p90=\(String(format: "%.2f", ms[ms.count * 9 / 10]), privacy: .public)ms max=\(String(format: "%.2f", ms.last ?? 0), privacy: .public)ms mean=\(String(format: "%.2f", ms.reduce(0, +) / Double(ms.count)), privacy: .public)ms")
+        hide()
     }
 
     private static func replay(show: @escaping () -> Void, hide: @escaping () -> Void,
