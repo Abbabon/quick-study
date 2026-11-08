@@ -45,6 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                window: { [weak self] in self?.panel.window },
                                setQuery: { [weak self] in self?.model.query = $0 })
 
+        Perf.installFetcherHook(refresh: { [weak self] in self?.model.startRefresh(skipImages: true) },
+                                images: { [weak self] in self?.model.startImageDownload() })
+
         model.onOpenSettings = { [weak self] in self?.settingsWindow.show() }
         model.onOpenGame = { [weak self] in self?.gameWindow.show() }
 
