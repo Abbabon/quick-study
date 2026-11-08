@@ -1,6 +1,6 @@
 # Quick Study — Architecture
 
-This document captures the shipped architecture for future subtasking and onboarding. It reflects what's on disk after the initial build; for the original spec and decision rationale, see `docs/plan.md`.
+This document captures the shipped architecture for future subtasking and onboarding. It reflects what's on disk after the initial build and the features shipped since.
 
 ## 1. System overview
 
@@ -286,9 +286,9 @@ Each row below is independently shippable:
 | D | Mana symbol rendering (replace `{R}` etc. with images) | `CardPreview` text formatter, `Resources/symbols/` |
 | E | Deck builder pane | new view, `decks` table |
 | F | App icon + status-bar icon assets | `Resources/Assets.xcassets/` |
-| G | ~~Launch-at-login toggle in Settings~~ — **done** via `SMAppService.mainApp` (`LoginItem.swift`), not a LaunchAgent | `SettingsView`, `LoginItem.swift` |
+| G | ~~Launch-at-login toggle in Settings~~ — **done** via `SMAppService.mainApp` (`LoginItem.swift`) | `SettingsView`, `LoginItem.swift` |
 | H | Crash log → user-visible error banner | `AppModel`, `SearchPanel` |
 
 ## 10. Verification
 
-See the verification checklist at the end of `docs/plan.md` — it remains the authoritative end-to-end test list.
+There is no automated end-to-end suite. `swift test` covers the SearchEngine golden cases; verify app behavior on the installed build as described in `CLAUDE.md`.
