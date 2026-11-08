@@ -213,26 +213,31 @@ final class AppModel: ObservableObject {
             // run on the main actor inside `applyLoadedDB`.
             let engine = SearchEngine(minis: minis, sets: sets, filterFields: fields)
             let recents = (try? store.recentlyAdded()) ?? []
-            let imageBytes = (try? ImageCache.size(at: Paths.imagesDir)) ?? 0
             let artCount = (try? store.artworkCount()) ?? 0
-            let artBytes = (try? ImageCache.size(at: Paths.artDir)) ?? 0
             Perf.signposter.endInterval("db.load", state)
             Perf.log.notice("perf db.load \(String(format: "%.2f", (Perf.now() - t0) * 1000), privacy: .public) ms")
-            await self?.applyLoadedDB(engine: engine, recents: recents,
-                                      imageBytes: imageBytes, artCount: artCount, artBytes: artBytes)
+            await self?.applyLoadedDB(engine: engine, recents: recents, artCount: artCount)
+            // The image/art folder sizes (85k+ files to stat, often >1 s) only feed Settings —
+            // computed after search is ready instead of delaying it.
+            let (imageBytes, artBytes) = Perf.measure("cache.sizes") {
+                ((try? ImageCache.size(at: Paths.imagesDir)) ?? 0, (try? ImageCache.size(at: Paths.artDir)) ?? 0)
+            }
+            await self?.applyCacheSizes(imageBytes: imageBytes, artBytes: artBytes)
         }
+    }
+
+    private func applyCacheSizes(imageBytes: Int64, artBytes: Int64) {
+        imageCacheSizeFormatted = ByteCountFormatter.string(fromByteCount: imageBytes, countStyle: .file)
+        artCacheSizeFormatted = ByteCountFormatter.string(fromByteCount: artBytes, countStyle: .file)
     }
 
     /// Applies the results of `loadEngineInBackground` and marks the DB ready.
     @MainActor
-    private func applyLoadedDB(engine: SearchEngine, recents: [Card.Recent],
-                              imageBytes: Int64, artCount: Int, artBytes: Int64) {
+    private func applyLoadedDB(engine: SearchEngine, recents: [Card.Recent], artCount: Int) {
         self.engine = engine
         recentlyAdded = recents
         reloadLists()
-        imageCacheSizeFormatted = ByteCountFormatter.string(fromByteCount: imageBytes, countStyle: .file)
         artworkCount = artCount
-        artCacheSizeFormatted = ByteCountFormatter.string(fromByteCount: artBytes, countStyle: .file)
         dbState = .ready
         // A query may have been typed while the engine was still loading — run it now that
         // results can actually be produced.
@@ -260,8 +265,8 @@ final class AppModel: ObservableObject {
         let parsed = QueryParser.parse(query)
         let counted = engine.searchCounted(name: parsed.name, filters: parsed.filters)
         Perf.untilIdle("keystroke", since: start,
-                       detail: String(format: "search=%.2fms len=%d total=%d", (Perf.now() - t0) * 1000,
-                                      query.count, counted.total))
+                       detail: String(format: "toSearch=%.2fms search=%.2fms len=%d total=%d", (t0 - start) * 1000,
+                                      (Perf.now() - t0) * 1000, query.count, counted.total))
         results = counted.matches
         totalMatchCount = counted.total
         if let first = results.first, selectedID == nil || !results.contains(where: { $0.id == selectedID }) {
