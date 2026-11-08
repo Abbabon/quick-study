@@ -48,6 +48,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Perf.installFetcherHook(refresh: { [weak self] in self?.model.startRefresh(skipImages: true) },
                                 images: { [weak self] in self?.model.startImageDownload() })
 
+        Perf.installSearchHook { [weak self] q in
+            guard let engine = self?.model.engine else { return "no model" }
+            let r = engine.search(query: q)
+            return "cards=\(engine.cardCount()) total=\(r.total) top=\(r.hits.prefix(3).map(\.name).joined(separator: " | "))"
+        }
+
         model.onOpenSettings = { [weak self] in self?.settingsWindow.show() }
         model.onOpenGame = { [weak self] in self?.gameWindow.show() }
 
