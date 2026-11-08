@@ -164,4 +164,37 @@ final class SearchEngineTests: XCTestCase {
         XCTAssertEqual(counted.total, unlimited)
         XCTAssertGreaterThanOrEqual(counted.total, counted.matches.count)
     }
+
+    // MARK: - Edge semantics (guard the ASCII fast path against the Unicode-aware String path)
+
+    private let edgeCorpus: [Card.Mini] = [
+        "Æther Vial", "Aether Vial", "Lim-Dûl's Vault", "Jötun Grunt", "Jotun Owl Keeper",
+        "Bolt", "Lightning  Bolt", "Fire // Ice", "Boltwave", "Abolt",
+    ].enumerated().map { Card.Mini(id: "e\($0.offset)", name: $0.element) }
+
+    private func names(_ q: String) -> [String] {
+        SearchEngine(minis: edgeCorpus).search(q, limit: 50).map(\.name)
+    }
+
+    func testFullRankingOrderIsStable() {
+        // Pins the full order (score tiers, length bonus, name tiebreak) for a broad query.
+        XCTAssertEqual(names("bolt"), ["Bolt", "Boltwave", "Lightning  Bolt", "Abolt"])
+        XCTAssertEqual(names("lb"), ["Lightning  Bolt"])
+    }
+
+    func testNonASCIINamesMatchByCharacter() {
+        XCTAssertEqual(names("æther").first, "Æther Vial")
+        XCTAssertEqual(names("aether"), ["Aether Vial"])           // "æ" is not "ae"
+        XCTAssertEqual(names("jötun"), ["Jötun Grunt"])
+        XCTAssertEqual(names("jotun"), ["Jotun Owl Keeper"])         // "ö" is not "o"
+        XCTAssertEqual(names("dûl").first, "Lim-Dûl's Vault")
+        XCTAssertEqual(names("ther"), ["Æther Vial", "Aether Vial"])  // substring; "æ" is one char → shorter
+    }
+
+    func testMultiWordTokenStart() {
+        XCTAssertEqual(names("lig bol").first, "Lightning  Bolt")   // double space in name
+        XCTAssertEqual(names("lim vau").first, "Lim-Dûl's Vault")    // non-ASCII token
+        XCTAssertEqual(names("fire ice"), ["Fire // Ice"])          // "//" breaks token-start; subsequence still hits
+        XCTAssertEqual(names("fire // ice").first, "Fire // Ice")
+    }
 }
