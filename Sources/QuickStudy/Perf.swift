@@ -68,6 +68,7 @@ enum Perf {
     private static var firstFrame: TimeInterval?
     /// Run-loop passes (each ending in a CA commit) the interaction took before going idle.
     private static var passes = 0
+    private static var passCPU: [Double] = []
     private static var observer: CFRunLoopObserver?
 
     /// Measures from `start` until the main run loop next goes idle (sleeps ≥ 8 ms) — i.e. the
@@ -81,6 +82,7 @@ enum Perf {
         cpuAtLastBeforeWaiting = cpuAtStart
         firstFrame = nil
         passes = 0
+        passCPU = []
         installObserver()
     }
 
@@ -91,7 +93,7 @@ enum Perf {
         let ms = (lastBeforeWaiting - p.start) * 1000
         let first = ((firstFrame ?? lastBeforeWaiting) - p.start) * 1000
         let cpu = Double(cpuAtLastBeforeWaiting - cpuAtStart) / 1e6
-        log.notice("perf \(p.name, privacy: .public) \(String(format: "%.2f", ms), privacy: .public) ms first=\(String(format: "%.2f", first), privacy: .public)ms cpu=\(String(format: "%.2f", cpu), privacy: .public)ms passes=\(passes, privacy: .public) \(p.detail, privacy: .public)")
+        log.notice("perf \(p.name, privacy: .public) \(String(format: "%.2f", ms), privacy: .public) ms first=\(String(format: "%.2f", first), privacy: .public)ms cpu=\(String(format: "%.2f", cpu), privacy: .public)ms passes=\(passes, privacy: .public) [\(passCPU.map { String(format: "%.1f", $0) }.joined(separator: ","), privacy: .public)] \(p.detail, privacy: .public)")
     }
 
     private static func installObserver() {
@@ -106,9 +108,13 @@ enum Perf {
                 let t = now()
                 if activity == .beforeWaiting {
                     if pending != nil, firstFrame == nil { firstFrame = t }
-                    if pending != nil { passes += 1 }
+                    let c = threadCPU()
+                    if pending != nil {
+                        passes += 1
+                        passCPU.append(Double(c - cpuAtLastBeforeWaiting) / 1e6)
+                    }
                     lastBeforeWaiting = t
-                    cpuAtLastBeforeWaiting = threadCPU()
+                    cpuAtLastBeforeWaiting = c
                     sleptAt = t
                 } else if pending != nil, t - sleptAt >= 0.008 || t - pending!.start > 2 {
                     finish()
