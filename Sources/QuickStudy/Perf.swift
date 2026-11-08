@@ -176,8 +176,12 @@ extension Perf {
             for i in stride(from: w.count - 1, through: 0, by: -1) { steps.append(String(w.prefix(i))) }
         }
         var best = Array(repeating: UInt64.max, count: steps.count)
+        // Optional idle gap before each step (-perfBenchGapMs 100) to mimic typing pace: the core
+        // clocks down / work may land on an efficiency core between keys.
+        let gap = UInt32(UserDefaults.standard.integer(forKey: "perfBenchGapMs")) * 1000
         for _ in 0..<5 {
             for (k, q) in steps.enumerated() {
+                if gap > 0 { usleep(gap) }
                 let c0 = threadCPU()
                 setQuery(q)
                 render()
