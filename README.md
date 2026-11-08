@@ -125,9 +125,9 @@ If you previously used the app under its earlier name (MTGSpotlight), the data d
 ```
 .
 ├── Package.swift
-├── engine/             # Rust crate: search + query parser (UniFFI) and the mtg-fetcher CLI
+├── engine/             # Rust crate: database + migrations, search, card lists, update check (UniFFI) and the mtg-fetcher CLI
 ├── Sources/
-│   ├── Shared/         # Card model, GRDB CardStore, file paths
+│   ├── Shared/         # view models (Card, CardList, Artwork), game engine, file paths
 │   ├── EngineBindings/ # generated UniFFI Swift bindings (gitignored; scripts/build-engine.sh)
 │   └── QuickStudy/     # SwiftUI app — panel, views, settings, hotkey
 ├── Tests/
@@ -150,7 +150,7 @@ swift test                 # app/store tests + a thin FFI search test
 cargo test --manifest-path engine/Cargo.toml --features ffi   # search + query-parser golden cases
 ```
 
-The Swift tests cover the FFI search smoke test, color-identity and mana-cost parsing, rarity/printing ingestion, the Recently Added / first-seen and Lists store logic, the Play game engine, and update-check gating.
+The Swift tests cover the FFI smoke tests (search, database reads, card lists, update-stamp helpers), color-identity and mana-cost parsing, the Play game engine and the app-update check; the store, Recently Added / first-seen, Lists, printings and Scryfall update-check logic are tested in Rust (`cargo test`).
 
 ## Troubleshooting
 

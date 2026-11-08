@@ -364,6 +364,9 @@ final class AppModel: ObservableObject {
             let loaded = await Self.loadDetail(id: hit.id, store: store)
             let ms = (Perf.now() - t0) * 1000
             out.append("detail \(hit.name): printings=\(loaded?.printings.count ?? -1) \(String(format: "%.2f", ms)) ms")
+            let t1 = Perf.now()
+            _ = await Self.loadDetail(id: hit.id, store: store)
+            out.append("detail again \(hit.name): \(String(format: "%.2f", (Perf.now() - t1) * 1000)) ms")
         }
         if write, let id = createList(named: "debug-list") {
             if let first = recentlyAdded.first { addCard(first.id, toList: id) }
