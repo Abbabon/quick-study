@@ -21,24 +21,55 @@ public final class ScryfallClient {
         try await ScryfallBulk.info(type: type, session: session)
     }
 
-    /// Downloads the bulk JSON blob to a local file and returns its path.
+    /// Downloads the gzipped JSONL bulk file and gunzips it to `destination` (plain JSONL).
     public func downloadBulkJSON(from info: BulkInfo, to destination: URL) async throws {
-        guard let url = URL(string: info.download_uri) else {
-            throw NSError(domain: "ScryfallClient", code: 2, userInfo: [NSLocalizedDescriptionKey: "bad download_uri"])
+        guard let s = info.jsonl_download_uri, let url = URL(string: s) else {
+            throw NSError(domain: "ScryfallClient", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "bulk entry \(info.type) has no jsonl_download_uri"])
         }
         let (tmp, _) = try await session.download(from: url)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let fm = FileManager.default
+        if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
+        fm.createFile(atPath: destination.path, contents: nil)
+        let out = try FileHandle(forWritingTo: destination)
+        defer { try? out.close() }
+        let gunzip = Process()
+        gunzip.executableURL = URL(fileURLWithPath: "/usr/bin/gunzip")
+        gunzip.arguments = ["-c", tmp.path]
+        gunzip.standardOutput = out
+        try gunzip.run()
+        gunzip.waitUntilExit()
+        guard gunzip.terminationStatus == 0 else {
+            try? fm.removeItem(at: destination)
+            throw NSError(domain: "ScryfallClient", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey: "gunzip failed (\(gunzip.terminationStatus))"])
         }
-        try FileManager.default.moveItem(at: tmp, to: destination)
+    }
+
+    /// Splits a bulk file into JSON values. Scryfall serves JSON Lines; a legacy single
+    /// JSON array (leading `[`) is still accepted.
+    static func rows(at url: URL) throws -> [Data] {
+        let data = try Data(contentsOf: url)
+        if data.first(where: { $0 > 0x20 }) == UInt8(ascii: "[") {
+            let arr = try JSONSerialization.jsonObject(with: data) as? [Any] ?? []
+            return try arr.map { try JSONSerialization.data(withJSONObject: $0) }
+        }
+        return data.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: true)
+            .filter { $0.contains { $0 > 0x20 } }
+            .map { Data($0) }
+    }
+
+    static func decodeRows<T: Decodable>(_ type: T.Type, at url: URL) throws -> [T] {
+        let dec = JSONDecoder()
+        return try rows(at: url).map { try dec.decode(T.self, from: $0) }
     }
 
     /// Streaming decode of the Scryfall bulk JSON into `Card` records.
     /// The bulk file is a single JSON array; we decode it whole then yield records.
     /// At ~50–100 MB this is acceptable; if it grows we can switch to a streaming parser.
     public func parseBulk(at url: URL) throws -> [Card] {
-        let data = try Data(contentsOf: url)
-        let raws = try JSONDecoder().decode([ScryfallCard].self, from: data)
+        let raws = try Self.decodeRows(ScryfallCard.self, at: url)
         return raws.compactMap { $0.toCard() }
     }
 
@@ -46,8 +77,7 @@ public final class ScryfallClient {
     /// yield multiple arts (double-faced cards carry one illustration per face), so we
     /// flatten them; the DB upsert dedups by `illustration_id`.
     public func parseArtworks(at url: URL) throws -> [Artwork] {
-        let data = try Data(contentsOf: url)
-        let raws = try JSONDecoder().decode([ScryfallArtwork].self, from: data)
+        let raws = try Self.decodeRows(ScryfallArtwork.self, at: url)
         return raws.flatMap { $0.toArtworks() }
     }
 }
@@ -287,9 +317,8 @@ public extension ScryfallClient {
     /// We do this rather than carrying image URLs through `Card` because they're
     /// only relevant during the fetch phase.
     func extractImageRefs(at url: URL) throws -> [CardImageRef] {
-        let data = try Data(contentsOf: url)
-        guard let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            return []
+        let arr = try Self.rows(at: url).compactMap {
+            try JSONSerialization.jsonObject(with: $0) as? [String: Any]
         }
         var refs: [CardImageRef] = []
         refs.reserveCapacity(arr.count)
@@ -364,8 +393,7 @@ public extension ScryfallClient {
     /// non-token printings with an oracle_id. Whole-file decode like `parseBulk`; the fetcher
     /// is a short-lived process so transient memory for the ~150 MB blob is acceptable.
     func parsePrintings(at url: URL) throws -> [Card.Printing] {
-        let data = try Data(contentsOf: url)
-        let raws = try JSONDecoder().decode([ScryfallPrinting].self, from: data)
+        let raws = try Self.decodeRows(ScryfallPrinting.self, at: url)
         return raws.compactMap { $0.toPrinting() }
     }
 
