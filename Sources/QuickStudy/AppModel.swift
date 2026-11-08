@@ -65,7 +65,7 @@ final class AppModel: ObservableObject {
     /// State of the app self-update flow (separate from the card-data update above).
     @Published var appUpdateState: AppUpdateState = .none
 
-    let engine = SearchEngine()
+    private(set) var engine = SearchEngine()
     let fetcher = FetcherProcess()
     private var store: CardStore?
     private let detailCache = NSCache<NSString, CachedCard>()
@@ -204,24 +204,30 @@ final class AppModel: ObservableObject {
     /// results to `applyLoadedDB` back on the main actor.
     private func loadEngineInBackground(_ store: CardStore) {
         Task.detached(priority: .userInitiated) { [weak self] in
+            let state = Perf.signposter.beginInterval("db.load")
+            let t0 = Perf.now()
             let minis = (try? store.loadMinis()) ?? []
             let sets = (try? store.loadSetIndex()) ?? []
             let fields = (try? store.loadFilterFields()) ?? [:]
+            // Build the search index here too — it sorts/prepares all 35k names, which used to
+            // run on the main actor inside `applyLoadedDB`.
+            let engine = SearchEngine(minis: minis, sets: sets, filterFields: fields)
             let recents = (try? store.recentlyAdded()) ?? []
             let imageBytes = (try? ImageCache.size(at: Paths.imagesDir)) ?? 0
             let artCount = (try? store.artworkCount()) ?? 0
             let artBytes = (try? ImageCache.size(at: Paths.artDir)) ?? 0
-            await self?.applyLoadedDB(minis: minis, sets: sets, fields: fields, recents: recents,
+            Perf.signposter.endInterval("db.load", state)
+            Perf.log.notice("perf db.load \(String(format: "%.2f", (Perf.now() - t0) * 1000), privacy: .public) ms")
+            await self?.applyLoadedDB(engine: engine, recents: recents,
                                       imageBytes: imageBytes, artCount: artCount, artBytes: artBytes)
         }
     }
 
     /// Applies the results of `loadEngineInBackground` and marks the DB ready.
     @MainActor
-    private func applyLoadedDB(minis: [Card.Mini], sets: [Card.SetGroup],
-                              fields: [String: Card.FilterFields], recents: [Card.Recent],
+    private func applyLoadedDB(engine: SearchEngine, recents: [Card.Recent],
                               imageBytes: Int64, artCount: Int, artBytes: Int64) {
-        engine.load(minis, sets: sets, filterFields: fields)
+        self.engine = engine
         recentlyAdded = recents
         reloadLists()
         imageCacheSizeFormatted = ByteCountFormatter.string(fromByteCount: imageBytes, countStyle: .file)
@@ -234,6 +240,7 @@ final class AppModel: ObservableObject {
     }
 
     func runSearch() {
+        let start = Perf.interactionStart()
         // Empty query → browse mode. Preserve a card opened from the Recently Added
         // column (this also guards the deferred onChange that `selectRecent` triggers
         // when it clears the query); otherwise fall back to the placeholder.
@@ -245,11 +252,16 @@ final class AppModel: ObservableObject {
                 selectedCard = nil
                 selectedPrintings = []
             }
+            Perf.untilIdle("keystroke", since: start, detail: "empty")
             return
         }
         selectedRecent = nil
+        let t0 = Perf.now()
         let parsed = QueryParser.parse(query)
         let counted = engine.searchCounted(name: parsed.name, filters: parsed.filters)
+        Perf.untilIdle("keystroke", since: start,
+                       detail: String(format: "search=%.2fms len=%d total=%d", (Perf.now() - t0) * 1000,
+                                      query.count, counted.total))
         results = counted.matches
         totalMatchCount = counted.total
         if let first = results.first, selectedID == nil || !results.contains(where: { $0.id == selectedID }) {
@@ -326,8 +338,10 @@ final class AppModel: ObservableObject {
     /// pool instead of the main actor (some cards have 800+ printings to read and decode).
     private nonisolated static func loadDetail(id: String, store: CardStore)
         async -> (card: Card, printings: [Card.Printing])? {
-        guard let card = try? store.card(id: id) else { return nil }
-        return (card, printings(for: card, store: store))
+        Perf.measure("detail.load") {
+            guard let card = try? store.card(id: id) else { return nil }
+            return (card, printings(for: card, store: store))
+        }
     }
 
     /// Loads a card's printings (empty if it has no `oracleID`, e.g. ingested before printings

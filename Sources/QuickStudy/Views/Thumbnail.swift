@@ -58,7 +58,7 @@ struct Thumbnail: View {
         Task.detached(priority: .userInitiated) {
             let url = Paths.imageURL(forCardID: cardID)
             guard FileManager.default.fileExists(atPath: url.path),
-                  let img = NSImage(contentsOf: url) else { return }
+                  let img = Perf.measure("thumb.decode", { NSImage(contentsOf: url) }) else { return }
             ThumbnailCache.store(img, for: cardID)
             await MainActor.run {
                 if self.id == cardID { self.image = img }
