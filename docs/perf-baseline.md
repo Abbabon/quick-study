@@ -249,3 +249,34 @@ No regression. The keystroke p99 < 16 ms target is still limited by SwiftUI layo
 - Behavior is deliberately identical to Stage 0, including the cases where Swift is quirky: the filter-only branch ignores duplicate ids, `mv:` parses with Rust's `f64` (differs from Swift `Double(String)` only for hex floats like `mv:0x10`), and `s:` set codes compare byte-wise.
 - The static library carries its own bundled SQLite. GRDB in the same binary resolves `sqlite3_*` to it instead of the system library; all app and store tests pass on it.
 
+
+## Stage 3: database reads and card lists in Rust
+
+> 2026-11-08 · branch `feat/rust-stage-3-db` · release builds run with `QUICKSTUDY_DATA_DIR` pointing at a copy of the real DB (35,769 cards, 52,230 artworks), load average 6-19. Master (GRDB) and the branch were alternated 3-4 times each.
+
+**Data parity (gate).** Before GRDB was deleted, a harness dumped what `CardStore` returned for 336 sampled cards (basic lands with 843-869 printings, double-faced cards, `Æ`/`û`/`ö` names, a missing id), the 200 Recently Added rows, all 52,230 artworks, both card lists with their items, counts and meta keys. The same dump through the Rust `Database` was byte-identical, and the `grdb_migrations` ledger still has 9 rows. One deliberate behavior note: the cutoff for "recently added" is now "now minus N x 24 h, in UTC", where Swift subtracted calendar days in local time; they differ only across a DST change.
+
+**Launch `db.load`** (search usable): GRDB build 497 / 518 / 516 / 536 ms (one 695 ms outlier); Rust 466 / 461 / 492 / 496 / 486 ms. Stage 2 recorded 0.37-0.52 s on a quieter machine.
+
+**Detail load** (`detail.load`, off the main actor; first load in a fresh process):
+
+| Card | GRDB | Rust |
+|---|---|---|
+| Plains, 843 printings | 11.3 / 15.0 / 13.9 / 18.5 ms (a first run hit 33 ms) | 17.5-23 ms (13 ms when repeated) |
+| Lightning Bolt, 75 printings | 1.35-1.85 ms | 1.4-2.5 ms |
+| Delver of Secrets, 8 printings | 0.6 ms | 0.3-0.5 ms |
+
+The Rust query itself takes 0.65 ms warm. The extra ~7 ms on an 843-printing card is UniFFI lifting about 7,500 strings into Swift plus the mapping to `Card.Printing`. It is paid once per card (the result is cached), off the main thread, and below one frame, so it was accepted rather than adding a packed format.
+
+**Keystroke render bench** (synchronous bench, 72 steps, main-thread CPU per step, same machine back to back):
+
+| | p50 | p90 | max |
+|---|---|---|---|
+| GRDB build (2 runs) | 3.41 / 3.37 ms | 4.96 / 4.81 ms | 8.90 / 8.78 ms |
+| Rust build (2 runs) | 3.28 / 3.34 ms | 4.82 / 4.75 ms | 8.70 / 8.50 ms |
+
+No regression.
+
+**One SQLite.** `nm -m` on the release app shows no locally defined `_sqlite3_*` symbols; the binary links `/usr/lib/libsqlite3.dylib`. (The Stage 2 caveat about a bundled copy shadowing GRDB's is obsolete: GRDB is gone.)
+
+**App Store sandbox** (`build-appstore.sh --adhoc`): launched, built the 35,769-card index in 0.5 s, answered searches, loaded details (Plains: 843 printings) and a list edit made through the `-debugDB` hook persisted in the container DB. `-debugDB YES` plus `notifyutil -p com.abbabon.quickstudy.debug.db` (read-only) or `.debug.db.write` (creates a scratch list) logs the report.

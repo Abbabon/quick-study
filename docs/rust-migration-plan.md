@@ -1,6 +1,6 @@
 # QuickStudy → Rust engine migration plan
 
-> Status: **Stages 0, 1 and 2 done; stage 3 next** (was: post-grill, awaiting confirmation) · 2026-11-08 · baseline `master` @ 865d2f2 (v0.6.1-dev)
+> Status: **All stages (0-3) done** (was: post-grill, awaiting confirmation) · 2026-11-08 · baseline `master` @ 865d2f2 (v0.6.1-dev)
 
 ## Goal
 
@@ -168,6 +168,14 @@ A port of every phase, honoring the contract byte-for-byte:
 - no ranking diffs on a large query replay (Swift vs Rust compared in one test before deletion).
 
 ## Stage 3: DB read layer + card lists via UniFFI
+
+> **Status: done** (branch `feat/rust-stage-3-db`). Rust owns all DB access and migrations; GRDB, `Shared/CardStore`, `BulkData`, `SetInfo` and the Swift `UpdateChecker` are deleted. Decisions:
+> - **FFI shape:** one `Database` UniFFI object (`open` runs migrations; a read-only and a write connection behind mutexes, WAL) with typed records (`CardDetail`, `PrintingRow`, `RecentCard`, `ArtworkRow`, `ListSummary`; list items reuse `Hit`). `Sources/QuickStudy/DatabaseMapping.swift` maps them onto the `Shared` view types, which stay Swift.
+> - **Update checks:** the Scryfall check moved (`engine/src/update.rs`: async `latestOracleStamp()`, `isNewerThanIngested`, `stampUnixMs`). The unused `shouldPrompt` was dropped. `AppUpdateChecker` (GitHub release check) **stayed Swift**: it is URLSession + semver glue for the macOS self-updater (`AppUpdater`), not data-engine logic.
+> - **Deleted unused loaders:** `loadMinis`, `loadFilterFields`, `loadSetIndex`, `setsCount`, `printingsCount`, `distinctArtists`.
+> - **Gates:** a GRDB-vs-Rust dump on a copy of the real DB (336 sampled cards with printings, up to 869 per card; 200 recents; 52,230 artworks; both lists) was byte-identical; the ledger was untouched (9 rows, no re-migration). Numbers in `docs/perf-baseline.md`.
+> - **Linking:** `EngineBindings` now links `sqlite3` explicitly (GRDB used to).
+> - The schema freeze is lifted: new migrations go in `engine/src/db.rs` only.
 
 1. Move every remaining `CardStore` operation behind the Rust API:
    - `loadMinis`, the set index, filter fields, detail + printings, recently added, card lists CRUD;
