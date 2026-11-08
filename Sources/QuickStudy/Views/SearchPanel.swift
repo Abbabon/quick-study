@@ -34,6 +34,10 @@ struct SearchPanel: View {
                 Divider().opacity(0.3)
                 PinnedRow(model: model)
             }
+            if model.dbState == .ready, case .running = model.refreshState {
+                Divider().opacity(0.3)
+                refreshStatusBar
+            }
         }
         .frame(minWidth: scale.size(860), minHeight: scale.size(520))
         .animation(reduceMotion ? nil : DS.Motion.resize, value: model.recentlyAddedExpanded)
@@ -128,9 +132,7 @@ struct SearchPanel: View {
             ProgressView("Loading database…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .ready:
-            if case .running = model.refreshState {
-                refreshBanner
-            } else if showAppUpdateBanner {
+            if showAppUpdateBanner {
                 appUpdateBanner
             } else if model.updateAvailable {
                 updateBanner
@@ -207,18 +209,43 @@ struct SearchPanel: View {
         .padding(.vertical, scale.pad(8))
     }
 
-    private var refreshBanner: some View {
+    /// Full-width bar pinned to the bottom of the panel while a refresh runs,
+    /// so progress never crowds the search results or side columns.
+    private var refreshStatusBar: some View {
         let scale = UIScale(value: uiScaleValue)
         return Group {
             if case let .running(phase, done, total) = model.refreshState {
                 HStack(spacing: scale.pad(8)) {
                     ProgressView().controlSize(.small)
-                    Text("\(phase) \(done)/\(total)").font(scale.font(11)).foregroundStyle(.secondary)
+                    Text(refreshStatusText(phase: phase, done: done, total: total))
+                        .font(scale.font(11))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if total > 0 {
+                        ProgressView(value: Double(done) / Double(total))
+                            .controlSize(.small)
+                            .frame(width: scale.size(160))
+                    }
                 }
                 .padding(.horizontal, scale.pad(18))
                 .padding(.vertical, scale.pad(6))
             }
         }
+    }
+
+    private func refreshStatusText(phase: String, done: Int, total: Int) -> String {
+        let label: String
+        switch phase {
+        case "start", "starting": label = "Starting refresh"
+        case "json": label = "Downloading card data"
+        case "ingest": label = "Updating database"
+        case "images": label = "Downloading images"
+        case "artwork": label = "Downloading artwork"
+        case "sets": label = "Downloading sets"
+        case "printings": label = "Updating printings"
+        default: label = phase.capitalized
+        }
+        return total > 0 ? "\(label) — \(done)/\(total)" : "\(label)…"
     }
 
     private var updateBanner: some View {
