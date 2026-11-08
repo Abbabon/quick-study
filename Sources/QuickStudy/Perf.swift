@@ -66,6 +66,8 @@ enum Perf {
     /// End of the first run-loop pass (incl. its Core Animation commit) after `untilIdle`:
     /// when the interaction's first frame was handed to the render server.
     private static var firstFrame: TimeInterval?
+    /// Run-loop passes (each ending in a CA commit) the interaction took before going idle.
+    private static var passes = 0
     private static var observer: CFRunLoopObserver?
 
     /// Measures from `start` until the main run loop next goes idle (sleeps ≥ 8 ms) — i.e. the
@@ -78,6 +80,7 @@ enum Perf {
         cpuAtStart = threadCPU()
         cpuAtLastBeforeWaiting = cpuAtStart
         firstFrame = nil
+        passes = 0
         installObserver()
     }
 
@@ -88,7 +91,7 @@ enum Perf {
         let ms = (lastBeforeWaiting - p.start) * 1000
         let first = ((firstFrame ?? lastBeforeWaiting) - p.start) * 1000
         let cpu = Double(cpuAtLastBeforeWaiting - cpuAtStart) / 1e6
-        log.notice("perf \(p.name, privacy: .public) \(String(format: "%.2f", ms), privacy: .public) ms first=\(String(format: "%.2f", first), privacy: .public)ms cpu=\(String(format: "%.2f", cpu), privacy: .public)ms \(p.detail, privacy: .public)")
+        log.notice("perf \(p.name, privacy: .public) \(String(format: "%.2f", ms), privacy: .public) ms first=\(String(format: "%.2f", first), privacy: .public)ms cpu=\(String(format: "%.2f", cpu), privacy: .public)ms passes=\(passes, privacy: .public) \(p.detail, privacy: .public)")
     }
 
     private static func installObserver() {
@@ -103,6 +106,7 @@ enum Perf {
                 let t = now()
                 if activity == .beforeWaiting {
                     if pending != nil, firstFrame == nil { firstFrame = t }
+                    if pending != nil { passes += 1 }
                     lastBeforeWaiting = t
                     cpuAtLastBeforeWaiting = threadCPU()
                     sleptAt = t
