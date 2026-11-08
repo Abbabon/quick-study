@@ -81,6 +81,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// re-showing it on a redundant activation (e.g. the `NSApp.activate` inside `show()`).
     var isVisible: Bool { panel?.isVisible ?? false }
 
+    /// The panel window, once created (for the perf replay hook).
+    var window: NSWindow? { panel }
+
     func toggle() {
         if let panel = panel, panel.isVisible {
             hide()
@@ -90,13 +93,15 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        let start = Perf.interactionStart()
+        let first = panel == nil
         let currentScale = UIScale.current().value
         if let existing = panel, currentScale != panelScale {
             existing.orderOut(nil)
             panel = nil
         }
         if panel == nil {
-            panel = makePanel()
+            panel = Perf.measure("panel.make") { makePanel() }
             panelScale = currentScale
         }
         guard let panel = panel else { return }
@@ -109,11 +114,12 @@ final class PanelController: NSObject, NSWindowDelegate {
         // `windowDidResignKey` immediately dismisses it — so the hotkey appears to do nothing
         // when the app isn't already frontmost. Ordering the panel front after activation
         // makes it the last (and therefore key) window.
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
+        Perf.measure("panel.activate") { NSApp.activate(ignoringOtherApps: true) }
+        Perf.measure("panel.orderFront") { panel.makeKeyAndOrderFront(nil) }
         // The hosting view is reused, so SwiftUI's `onAppear` won't re-fire — ask the search
         // field to retake focus now that the panel is key.
         model.focusSearchField()
+        Perf.untilIdle("panel.open", since: start, detail: first ? "first" : "warm")
     }
 
     func hide() {
