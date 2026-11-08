@@ -75,8 +75,8 @@ Menu-bar-resident app that also keeps a Dock icon at all times (`LSUIElement = N
 |---|---|
 | `Sources/QuickStudy/QuickStudyApp.swift` | `@main`, `AppDelegate`, status-bar menu, global hotkey wiring via `KeyboardShortcuts`. |
 | `Sources/QuickStudy/PanelController.swift` | Borderless `NSPanel` with `NSVisualEffectView` (`.hudWindow`). Floating, non-activating, auto-dismisses on focus loss / Esc. |
-| `Sources/QuickStudy/AppModel.swift` | `@MainActor ObservableObject`. Holds query, results, selection, refresh state. Owns `SearchEngine`, `CardStore`, `FetcherProcess`, `NSCache` for detail rows. |
-| `Sources/QuickStudy/SearchEngine.swift` | In-memory fuzzy ranker (see §3). |
+| `Sources/QuickStudy/AppModel.swift` | `@MainActor ObservableObject`. Holds query, results, selection, refresh state. Owns the Rust `SearchIndex`, `CardStore`, `FetcherProcess`, `NSCache` for detail rows. |
+| `engine/src/search.rs`, `engine/src/query.rs`, `engine/src/ffi.rs` | In-memory fuzzy ranker + query parser in Rust, exposed to Swift via UniFFI (see §3). |
 | `Sources/QuickStudy/FetcherProcess.swift` | Spawns `mtg-fetcher` via `Process`, parses NDJSON from stdout, calls back on the main actor. |
 | `Sources/QuickStudy/Views/SearchPanel.swift` | Top-level panel content: search field + result body. Handles ↑↓/Enter/Esc. |
 | `Sources/QuickStudy/Views/ResultList.swift` | Left list with thumbnail + name, keyboard nav, scroll-into-view. |
@@ -98,11 +98,11 @@ All ~25k card names (~2 MB) are loaded into memory at app launch as `[Card.Mini]
 
 `lengthBonus = max(0, 100 - name.count)` favors shorter names so "Bolt" beats "Lightning Bolt of the …" when the query is "bolt". Top 20 returned. Detail rows for highlighted IDs are fetched lazily from SQLite via `NSCache`.
 
-Target latency: <1 ms per keystroke. Verified by `Tests/SearchEngineTests/SearchEngineTests.swift` golden cases.
+Target latency: <1 ms per keystroke. Verified by the golden cases in `engine/tests/search.rs`.
 
 ## 3a. Inline search filters (Scryfall-style)
 
-`QueryParser.parse` (in `Sources/QuickStudy/QueryParser.swift`) splits the raw search string into a free-text **name** query plus a list of structured **filters**, imitating a subset of Scryfall's syntax. `AppModel.runSearch` calls it, then `SearchEngine.search(name:filters:)`.
+`query::parse` (in `engine/src/query.rs`) splits the raw search string into a free-text **name** query plus a list of structured **filters**, imitating a subset of Scryfall's syntax. `AppModel.runSearch` calls `SearchIndex.search(query:)`, which parses and then ranks.
 
 | Key (aliases) | Field | Match semantics |
 |---|---|---|
@@ -115,7 +115,7 @@ Target latency: <1 ms per keystroke. Verified by `Tests/SearchEngineTests/Search
 
 Operators: `:`/`=` (equals/contains), `>`, `>=`, `<`, `<=`. A leading `-` negates (`-t:land`). Unknown keys fall back to free text. Filters AND together and are applied to the candidate set **before** the result limit. A filters-only query (empty name) returns all matching cards, shortest-name first.
 
-Filtering reads a parallel in-memory index, `[String: Card.FilterFields]` (keyed by card id), built by `CardStore.loadFilterFields()` and loaded into `SearchEngine` alongside the minis. It carries lowercased `type_line`/`oracle_text`, `colors`, `cmc`, and the **set of every rarity the card was ever printed at** — aggregated from the `printings` table and unioned with the card's representative `rarity` as a fallback. This is what makes `r:common` mean "ever printed common" (the pauper sense) and lets basic rarity filtering work even before a `--printings` run. The index adds a few MB on top of the ~2 MB minis; search still iterates the same ~25k rows. Golden cases: `QueryParserTests`, `SearchEngineFilterTests`.
+Filtering reads a parallel in-memory index, `[String: Card.FilterFields]` (keyed by card id), built by the Rust engine reading the `cards` and `printings` tables directly (`search::load`). It carries lowercased `type_line`/`oracle_text`, `colors`, `cmc`, and the **set of every rarity the card was ever printed at** — aggregated from the `printings` table and unioned with the card's representative `rarity` as a fallback. This is what makes `r:common` mean "ever printed common" (the pauper sense) and lets basic rarity filtering work even before a `--printings` run. The index adds a few MB on top of the ~2 MB minis; search still iterates the same ~25k rows. Golden cases: `engine/src/query.rs` (parser) and `engine/tests/search.rs` (filters).
 
 ## 4. Database schema
 
@@ -195,9 +195,9 @@ These phases are intentionally wired into **manual refresh only**:
 
 The silent background sync remains oracle-only to avoid the ~150 MB `default_cards` download on every scheduled refresh.
 
-### SearchEngine set index
+### Search set index
 
-`SearchEngine` maintains an in-memory set index alongside the card-name index. On load it calls `CardStore.loadSetIndex()`, which returns `[Card.SetGroup]` (set code, set name, member oracle IDs). A query that prefix-matches a known set code or set name returns **all member cards** from that set, fixing a bug where set-name queries returned only the handful of cards whose name happened to contain the set-name string.
+The search index maintains an in-memory set index alongside the card-name index. On load it joins `printings` to `cards` by `oracle_id`, giving per set its code, name and member card IDs. A query that prefix-matches a known set code or set name returns **all member cards** from that set, fixing a bug where set-name queries returned only the handful of cards whose name happened to contain the set-name string.
 
 ### UI — Printings list
 
@@ -293,4 +293,4 @@ Each row below is independently shippable:
 
 ## 10. Verification
 
-There is no automated end-to-end suite. `swift test` covers the SearchEngine golden cases; verify app behavior on the installed build as described in `CLAUDE.md`.
+There is no automated end-to-end suite. `cargo test` (engine/) covers the search golden cases and `swift test` the app/store logic; verify app behavior on the installed build as described in `CLAUDE.md`.

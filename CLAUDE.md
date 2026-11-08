@@ -43,11 +43,19 @@ tests the wrong build and the work appears lost:
 ## Commands
 
 ```sh
-# Unit tests (SearchEngine golden cases)
+# FIRST, on a fresh clone (and after any engine/ change): build the Rust engine. It produces the
+# gitignored engine/EngineFFI.xcframework + Sources/EngineBindings/engine.swift that SwiftPM needs,
+# and `swift build` / `swift test` fail with "Missing engine/EngineFFI.xcframework" without it.
+./scripts/build-engine.sh        # also prints the mtg-fetcher path; build/install/release scripts call it
+
+# Rust tests (search + query-parser golden cases, schema/parity tests)
+cargo test --manifest-path engine/Cargo.toml --features ffi
+
+# Swift tests (thin FFI smoke test + app/store tests)
 swift test
 
 # Run a single test
-swift test --filter SearchEngineTests.SearchEngineTests/testExactBeatsPrefix
+swift test --filter SearchEngineTests.EngineFFITests/testSearchesTheDatabaseAndMarshalsHits
 
 # Build the .app bundle (Release) into ./dist, codesigns ad-hoc
 ./scripts/build-app.sh           # or: ./scripts/build-app.sh debug
@@ -77,9 +85,9 @@ python3 scripts/generate-icon.py
 Two executables (a Swift app and a Rust CLI) sharing one SQLite DB and one image directory under `~/Library/Application Support/QuickStudy/`. This split is the core design choice — keep it. The app never parses bulk JSON in-process; it always shells out.
 
 - **`Sources/Shared`** — Swift library used by the app. Owns `Paths`, the `Card` / `Card.Mini` models, and the GRDB-backed `CardStore` (migrations + reads + user card lists; card data is written only by the fetcher). Cross-boundary contracts (paths, schema) are mirrored in `engine/` (`paths.rs`, `db.rs`) — change both together.
-- **`engine/`** (Rust crate: lib + `mtg-fetcher` bin; stage 1 of `docs/rust-migration-plan.md`) — the only writer. Mirrors the GRDB schema v1–v9 (frozen) and records into GRDB's `grdb_migrations` ledger, so app and fetcher skip each other's migrations (`engine/tests/schema.rs` diffs `sqlite_master` against a GRDB-created fixture). Streams bulk JSONL (no whole-file decode), gunzips in-process (`flate2`), throttles progress to ~10/s, downloads images 32-wide with batched DB writes. Core phases (`json` → `ingest` → `images` → `done`/`error`), each emitting one NDJSON line per progress tick to stdout, mirrored to `~/Library/Logs/QuickStudy/fetcher.log`. Optional phases: `sets` and `printings` (`--printings`, manual refresh only) and `artwork` (`--artwork` ingests unique_artwork metadata and exits; `--download-art` also downloads art crops in an `images` pass). `--images-only` reuses the on-disk bulk JSON and downloads only missing images, with no ingest. Idempotent and resumable: image downloads skip files already on disk; ingest is `INSERT … ON CONFLICT DO UPDATE`. `--no-images` skips the images phase.
+- **`engine/`** (Rust crate: lib + `mtg-fetcher` bin + `ffi` feature; stages 1–2 of `docs/rust-migration-plan.md`) — the only writer, and the search engine (below). Mirrors the GRDB schema v1–v9 (frozen) and records into GRDB's `grdb_migrations` ledger, so app and fetcher skip each other's migrations (`engine/tests/schema.rs` diffs `sqlite_master` against a GRDB-created fixture). Streams bulk JSONL (no whole-file decode), gunzips in-process (`flate2`), throttles progress to ~10/s, downloads images 32-wide with batched DB writes. Core phases (`json` → `ingest` → `images` → `done`/`error`), each emitting one NDJSON line per progress tick to stdout, mirrored to `~/Library/Logs/QuickStudy/fetcher.log`. Optional phases: `sets` and `printings` (`--printings`, manual refresh only) and `artwork` (`--artwork` ingests unique_artwork metadata and exits; `--download-art` also downloads art crops in an `images` pass). `--images-only` reuses the on-disk bulk JSON and downloads only missing images, with no ingest. Idempotent and resumable: image downloads skip files already on disk; ingest is `INSERT … ON CONFLICT DO UPDATE`. `--no-images` skips the images phase.
 - **Known constraint:** `SearchPanel` uses `onKeyPress`, which requires macOS 14. The package minimum is already macOS 14 (`Package.swift`); lowering it means replacing those handlers with an `NSEvent` local key monitor in `PanelController`.
-- **`Sources/QuickStudy`** (SwiftUI menu-bar app) — runs as a `.regular` Dock app (`LSUIElement = NO` + `NSApp.setActivationPolicy(.regular)`) while also living in the menu bar. `AppDelegate` wires the global hotkey via Sindre Sorhus's `KeyboardShortcuts`. `PanelController` is a borderless non-activating `NSPanel` with an `NSVisualEffectView` (`.hudWindow`) — Spotlight-style. `AppModel` (`@MainActor ObservableObject`) holds query/results/refresh state and owns `SearchEngine`, `CardStore`, `FetcherProcess`, and an `NSCache` for full-row detail.
+- **`Sources/QuickStudy`** (SwiftUI menu-bar app) — runs as a `.regular` Dock app (`LSUIElement = NO` + `NSApp.setActivationPolicy(.regular)`) while also living in the menu bar. `AppDelegate` wires the global hotkey via Sindre Sorhus's `KeyboardShortcuts`. `PanelController` is a borderless non-activating `NSPanel` with an `NSVisualEffectView` (`.hudWindow`) — Spotlight-style. `AppModel` (`@MainActor ObservableObject`) holds query/results/refresh state and owns the Rust `SearchIndex`, `CardStore`, `FetcherProcess`, and an `NSCache` for full-row detail.
 
 ### Subprocess protocol
 
@@ -93,7 +101,11 @@ Two executables (a Swift app and a Rust CLI) sharing one SQLite DB and one image
 
 ### Search engine
 
-`SearchEngine` is intentionally synchronous, in-memory, no debounce, no SQLite hit per keystroke. All ~36k `Card.Mini` rows are loaded (and the index built) off the main actor at launch. Layered scorer: exact → prefix → token-start → substring → subsequence/initials, each with a `lengthBonus = max(0, 100 - name.count)` so short names win on ambiguous queries. Printable-ASCII names are matched on a flattened byte buffer (exactly equivalent); others use the original String scorer. Target p99 <1 ms — `SearchEngineTests` golden cases protect ranking order (add a case before tweaking weights); `swift test -c release -Xswiftc -enable-testing --filter SearchEngineBenchmarkTests` benchmarks the real corpus and checks the fast path against the String reference. Perf numbers, instrumentation and the replay hook: `docs/perf-baseline.md`. Detail rows for highlighted IDs are fetched lazily from SQLite via `NSCache`.
+Lives in Rust: `engine/src/search.rs` (ranker + filters + read-only SQLite index load) and `engine/src/query.rs` (parser), exposed to Swift through UniFFI (`engine/src/ffi.rs`, `ffi` cargo feature). The FFI surface is `SearchIndex.open(dbPath:)` / `.empty()`, `.search(query:) -> SearchResult(hits: [Hit], total)` (parses name + inline filters, top 20), `.searchName(name:limit:)` (plain name ranking, used by Guess-the-Card autocomplete) and `.cardCount()`. `Hit` carries what the UI needs (`id`, `name`, `colors`, `setCode`, `setName`, `rarity`); `Sources/QuickStudy/EngineHit.swift` maps it to `Card.Mini`.
+
+The index is built **by Rust reading SQLite directly** (read-only connection to `Paths.databaseURL`), not by Swift marshalling minis. `AppModel.loadEngineInBackground` builds it off the main actor and swaps it in; it is rebuilt after every refresh exactly as before. Search is synchronous, in-memory, no debounce, no SQLite hit per keystroke. Layered scorer: exact → prefix → token-start → substring → subsequence/initials, each with a `lengthBonus = max(0, 100 - name.count)` so short names win. Printable-ASCII names are matched on a flattened byte buffer; other names use a grapheme-cluster scorer mimicking Swift `String` semantics (NFD-normalized Characters). It was a deliberate 1:1 port of the old Swift engine — ranking changes are bugs; `engine/tests/search.rs` golden cases protect ranking order (add a case before tweaking weights). Target p99 <1 ms through the FFI — `swift test -c release -Xswiftc -enable-testing --filter EngineBenchmarkTests` benchmarks the real corpus. Perf numbers, instrumentation and the replay hook: `docs/perf-baseline.md`. The `-debugSearch YES` launch flag arms a notification hook that logs search results from the live (installed or sandboxed) engine. Detail rows for highlighted IDs are fetched lazily from SQLite via `NSCache`.
+
+The engine is linked as a static library (`engine/EngineFFI.xcframework`, a SwiftPM local `binaryTarget`, arm64 only, built release regardless of the Swift config) with its own bundled SQLite; its symbols take precedence over the system `libsqlite3` for GRDB in the same binary.
 
 ### Database
 
@@ -101,7 +113,7 @@ GRDB with WAL + `synchronous=NORMAL`. Migrations via `DatabaseMigrator` in `Card
 
 ### Bundling
 
-`scripts/build-app.sh` assembles the `.app` from `swift build` output plus the Rust fetcher (`scripts/build-fetcher.sh` → `cargo build --release --target aarch64-apple-darwin`; arm64-only): both binaries land in `Contents/MacOS/` (so the app finds `mtg-fetcher` next to itself without `MTG_FETCHER_PATH`), `Info.plist` and `AppIcon.icns` go to standard locations, then ad-hoc codesigned. Don't rely on Xcode project files — there are none.
+`scripts/build-app.sh` first runs `scripts/build-engine.sh` (the single entry point, also called by `build-appstore.sh`, `install-local.sh` and `release.sh` via `build-app.sh`: UniFFI static lib → XCFramework + Swift bindings, plus `mtg-fetcher`; `cargo build --target aarch64-apple-darwin`, arm64-only, deployment target 14.0), then assembles the `.app` from `swift build` output plus the Rust fetcher: both binaries land in `Contents/MacOS/` (so the app finds `mtg-fetcher` next to itself without `MTG_FETCHER_PATH`), `Info.plist` and `AppIcon.icns` go to standard locations, then ad-hoc codesigned. Don't rely on Xcode project files — there are none.
 
 ## Reference docs
 

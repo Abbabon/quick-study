@@ -1,6 +1,6 @@
 # QuickStudy → Rust engine migration plan
 
-> Status: **Stage 0 and Stage 1 done; stage 2 next** (was: post-grill, awaiting confirmation) · 2026-11-08 · baseline `master` @ 865d2f2 (v0.6.1-dev)
+> Status: **Stages 0, 1 and 2 done; stage 3 next** (was: post-grill, awaiting confirmation) · 2026-11-08 · baseline `master` @ 865d2f2 (v0.6.1-dev)
 
 ## Goal
 
@@ -151,6 +151,11 @@ A port of every phase, honoring the contract byte-for-byte:
 
 ## Stage 2: search + query parser via UniFFI
 
+> **Status: done** (branch `feat/rust-stage-2-search`). Deviations from the steps below:
+> - **Index source:** Rust builds the index by reading SQLite directly (read-only, path from Swift), instead of `SearchIndex::build(minis)` over FFI. The FFI is `SearchIndex.open(dbPath:)` / `.empty()`, `.search(query:)` (parses internally, so `parse_query` is not exported), `.searchName(name:limit:)` (Guess-the-Card autocomplete) and `.cardCount()`.
+> - **Build script:** `scripts/build-fetcher.sh` was replaced by `scripts/build-engine.sh` (static lib → XCFramework + generated Swift bindings in `Sources/EngineBindings`, plus `mtg-fetcher`).
+> - **Gates:** 143,503-query replay with 0 diffs (not 1k); p99 0.854 ms through the FFI; sandbox smoke test green. Numbers in `docs/perf-baseline.md`.
+
 1. Add the `ffi` feature: UniFFI exports for `SearchIndex::build(minis)`, `search(query, filters) -> [Hit]` and `parse_query`.
 2. Add `scripts/build-engine.sh`, which runs `cargo build` and then packages the XCFramework (gitignored) as an SPM `binaryTarget`. Build, install and release scripts call it.
 3. 1:1 port of the scorer: exact → prefix → token-start → substring → subsequence/initials, `lengthBonus`, top-20.
@@ -160,7 +165,7 @@ A port of every phase, honoring the contract byte-for-byte:
 **Exit:**
 - golden tests green in Rust;
 - Q16 targets still met through FFI;
-- no ranking diffs on a 1k-query replay (Swift vs Rust results captured before deletion).
+- no ranking diffs on a large query replay (Swift vs Rust compared in one test before deletion).
 
 ## Stage 3: DB read layer + card lists via UniFFI
 

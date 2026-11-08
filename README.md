@@ -44,6 +44,7 @@ Data is sourced from [Scryfall](https://scryfall.com/docs/api)'s free bulk-data 
 
 - macOS 14 or later
 - Xcode 15 or later (for `swift build`)
+- Rust (via rustup; the pinned toolchain installs itself) — run `./scripts/build-engine.sh` once before `swift build`
 - Python 3 with Pillow (only to regenerate the app icon)
 - ~5 GB free disk for the full image cache (optional — you can start with cards-only)
 
@@ -124,9 +125,10 @@ If you previously used the app under its earlier name (MTGSpotlight), the data d
 ```
 .
 ├── Package.swift
+├── engine/             # Rust crate: search + query parser (UniFFI) and the mtg-fetcher CLI
 ├── Sources/
 │   ├── Shared/         # Card model, GRDB CardStore, file paths
-│   ├── Fetcher/        # mtg-fetcher CLI (Scryfall → SQLite + image disk cache)
+│   ├── EngineBindings/ # generated UniFFI Swift bindings (gitignored; scripts/build-engine.sh)
 │   └── QuickStudy/     # SwiftUI app — panel, views, settings, hotkey
 ├── Tests/
 │   └── SearchEngineTests/
@@ -143,10 +145,12 @@ If you previously used the app under its earlier name (MTGSpotlight), the data d
 ## Tests
 
 ```sh
-swift test
+./scripts/build-engine.sh   # once on a fresh clone: builds the Rust engine XCFramework SwiftPM needs
+swift test                 # app/store tests + a thin FFI search test
+cargo test --manifest-path engine/Cargo.toml --features ffi   # search + query-parser golden cases
 ```
 
-Covers `SearchEngine` ranking (golden cases, including set-code/set-name matching), the inline-filter query parser and filtered search, color-identity and mana-cost parsing, rarity/printing ingestion, the Recently Added / first-seen and Lists store logic, the Play game engine, and update-check gating.
+The Swift tests cover the FFI search smoke test, color-identity and mana-cost parsing, rarity/printing ingestion, the Recently Added / first-seen and Lists store logic, the Play game engine, and update-check gating.
 
 ## Troubleshooting
 
