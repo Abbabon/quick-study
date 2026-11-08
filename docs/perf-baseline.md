@@ -212,3 +212,40 @@ What closing the gap would take, roughly from cheapest to most effort:
 - **Filter-only full-text queries** (`o:…`, `t:…` with no name) scan about 6 MB of rules text in about 5 ms. That is inside a frame but outside the 1 ms search target; `testFullTextFilterLatency` guards it at < 8 ms. Making it faster needs an index, which suits the stage-2 Rust work.
 - **Non-ASCII queries** ("æther") take the String path for about 100 non-ASCII names and all set names: about 0.75 ms.
 - **The one-off 9,308-query ranking comparison** is not committed. Its durable replacement is the fast-path-vs-reference test, which runs on the local DB and skips without one.
+
+## Stage 2: search in Rust through UniFFI
+
+> 2026-11-08 · branch `feat/rust-stage-2-search` · same machine, load average 7–12.
+
+The Swift `SearchEngine` and `QueryParser` were ported 1:1 into the `engine` crate and deleted. The index is built in Rust by reading SQLite directly; the app calls `SearchIndex.search(query:)`, which parses, ranks and returns the top-20 hits plus the total.
+
+**Equivalence replay (gate).** Before the Swift engine was deleted, 143,503 queries ran through both engines on a copy of the real DB (35,769 cards, 780 sets): typing prefixes of every 5th card name, initialisms and subsequences, substrings, multi-word token starts, set codes and set names, 24 filter forms combined with name prefixes, filter-only queries, every non-ASCII name with all its prefixes, NFD and ASCII-folded variants, and combining-mark, case and whitespace oddities. Top-20 ids, order, totals and the hit payload (name, set code, rarity, color identity) were identical on all 143,503 (141,566 non-empty): **0 diffs**. The test lived in commit "test: Swift-vs-Rust search equivalence replay" and was deleted with the Swift engine.
+
+**Search latency** (release bench on the real corpus; Rust figures include parsing and marshalling 20 hits across the FFI):
+
+| | Swift (Stage 0) | Rust via FFI | Target |
+|---|---|---|---|
+| Name typing, 505 searches: p50 | 0.086 ms | 0.126 ms | |
+| Name typing: p99 | 0.857 ms | 0.854 ms (max 1.03 ms, the 1-letter `l`) | < 1 ms: **met** |
+| Full-text filters (`o:`/`t:`/`c:` without a name), p50 | 4.92 ms | 2.71 ms | no worse: **met** |
+| Full-text filters, p99 | 5.30 ms | 4.05 ms | no worse: **met** |
+
+p50 is ~40 µs higher: that is the FFI plus building 20 records of strings per call. Tail latency is unchanged, and the full-text scan is 25–45% faster.
+
+**Launch DB load** (`db.load`, search usable): 0.76 s in Stage 0 → 0.37–0.52 s. Rust reads the three tables itself and no longer builds 35k Swift `Card.Mini`s, a filter-field dictionary and a set index.
+
+**Keystroke render bench** (Stage 0b synchronous bench on the installed build, 72 steps, main-thread CPU per step, min over repeats; load average 7–11):
+
+| | Stage 0b | Stage 2 |
+|---|---|---|
+| Back-to-back: p50 / p90 / max | 3.3–3.8 / 4.8–5.4 / 8.7–9.1 ms | 3.40–3.78 / 5.00–5.42 / 8.95–9.24 ms (3 runs) |
+| 100 ms idle before each step: p50 / p90 / max | 22.1 / 29.6 / 41.6 ms | 18.7 / 29.1 / 30.6 ms (1 run) |
+
+No regression. The keystroke p99 < 16 ms target is still limited by SwiftUI layout, exactly as in Stage 0b.
+
+**App Store sandbox** (`build-appstore.sh --adhoc`): the static library links into the app binary; inside the container the engine opens the container DB read-only, builds the 35,769-card index in 0.5 s and answers searches; a refresh through the debug hook re-indexed the sandboxed DB and searches kept working. `-debugSearch YES` plus `notifyutil -p com.abbabon.quickstudy.debug.search` logs results from any build.
+
+**Caveats.**
+- Behavior is deliberately identical to Stage 0, including the cases where Swift is quirky: the filter-only branch ignores duplicate ids, `mv:` parses with Rust's `f64` (differs from Swift `Double(String)` only for hex floats like `mv:0x10`), and `s:` set codes compare byte-wise.
+- The static library carries its own bundled SQLite. GRDB in the same binary resolves `sqlite3_*` to it instead of the system library; all app and store tests pass on it.
+

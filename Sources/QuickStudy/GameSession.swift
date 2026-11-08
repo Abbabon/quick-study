@@ -41,7 +41,7 @@ final class GameSession: ObservableObject {
 
     /// Search the loaded card index for Guess-the-Card Easy mode.
     func searchCards(_ query: String) -> [Card.Mini] {
-        model.engine.search(query, limit: 8)
+        model.engine.searchName(name: query, limit: 8).map(\.mini)
     }
 
     /// Starts a fresh endless run. Seeds randomly for local play (the engine is still

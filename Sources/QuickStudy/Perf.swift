@@ -245,3 +245,27 @@ extension Perf {
         log.notice("debug fetcher hook armed")
     }
 }
+
+// MARK: - Search smoke hook (debug/verification only, off unless opted in)
+
+extension Perf {
+    /// Runs searches against the live engine and logs the results, to verify search in an installed
+    /// or sandboxed build without driving the GUI. Armed only for a launch that opts in:
+    ///
+    ///     open -a QuickStudy --args -debugSearch YES
+    ///     notifyutil -p com.abbabon.quickstudy.debug.search
+    ///     log show --last 1m --style compact --predicate 'subsystem == "com.abbabon.quickstudy" AND category == "perf"'
+    ///
+    /// Queries come from the `debugSearchQueries` default (newline-separated) or a built-in set.
+    static func installSearchHook(run: @escaping (String) -> String) {
+        guard UserDefaults.standard.bool(forKey: "debugSearch") else { return }
+        var token: Int32 = 0
+        notify_register_dispatch("com.abbabon.quickstudy.debug.search", &token, .main) { _ in
+            let custom = UserDefaults.standard.string(forKey: "debugSearchQueries")?.split(separator: "\n").map(String.init)
+            for q in custom ?? ["lightning bolt", "bolt r:common", "o:\"draw a card\"", "c:r t:creature mv>=5", "msc", "æther", "jötun", "sol ring"] {
+                log.notice("debug.search \"\(q, privacy: .public)\" \(run(q), privacy: .public)")
+            }
+        }
+        log.notice("debug search hook armed")
+    }
+}
