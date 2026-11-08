@@ -30,11 +30,27 @@ enum Perf {
         return try body()
     }
 
-    /// Start time for a user interaction: the timestamp of the event being handled (so time the
-    /// event spent queued behind a busy main thread counts), or now if there is none.
-    static func interactionStart() -> TimeInterval {
+    /// Timestamp of the latest key-down not yet attributed to a search (set by a local monitor).
+    private static var unconsumedKeyDown: TimeInterval?
+    private static var keyMonitor: Any?
+
+    static func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+            unconsumedKeyDown = e.timestamp
+            return e
+        }
+    }
+
+    /// Start time for a keystroke-driven search: the timestamp of the key-down that caused it (so
+    /// time the event spent queued behind a busy main thread counts), or now if there is none.
+    /// Each key-down is used at most once. (Reading `NSApp.currentEvent` instead backdated
+    /// programmatic searches and panel opens to whatever event happened to be processed last —
+    /// that is what made "warm open after Esc" look like ~425 ms under the replay hook.)
+    static func keystrokeStart() -> TimeInterval {
         let t = now()
-        if let ts = NSApp.currentEvent?.timestamp, ts <= t, t - ts < 1 { return ts }
+        defer { unconsumedKeyDown = nil }
+        if let ts = unconsumedKeyDown, ts <= t, t - ts < 1 { return ts }
         return t
     }
 
