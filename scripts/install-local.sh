@@ -25,6 +25,8 @@ echo "==> Re-signing in place (ad-hoc)..."
 codesign --force --deep --sign - "$DST_APP" >/dev/null
 
 echo "==> Relaunching $APP_NAME"
-open -a "$APP_NAME"
+# Launch the installed bundle by path: `open -a` lets LaunchServices pick another registered
+# copy (e.g. a dist/ build in some checkout).
+open "$DST_APP"
 
 echo "==> Done."
