@@ -68,7 +68,7 @@ final class AppModel: ObservableObject {
 
     private(set) var engine = SearchIndex.empty()
     let fetcher = FetcherProcess()
-    private var store: CardStore?
+    private var store: Database?
     private let detailCache = NSCache<NSString, CachedCard>()
     /// Coalesces deferred detail loads. Each `select` cancels the prior task so a burst of
     /// keystrokes (each changing the top result) hits SQLite at most once, after typing pauses.
@@ -167,7 +167,7 @@ final class AppModel: ObservableObject {
     }
 
     init() {
-        self.store = try? CardStore()
+        self.store = try? Database.open(dbPath: Paths.databaseURL.path)
         loadPins()
         refreshDBState()
     }
@@ -175,9 +175,9 @@ final class AppModel: ObservableObject {
     func refreshDBState() {
         guard let store = store else { dbState = .unknown; return }
         do {
-            let n = try store.count()
+            let n = Int(try store.cardCount())
             totalCards = n
-            lastRefresh = try? store.meta("last_refresh")
+            lastRefresh = (try? store.meta(key: "last_refresh")) ?? nil
             if n == 0 {
                 dbState = .empty
                 engine = SearchIndex.empty()
@@ -203,15 +203,15 @@ final class AppModel: ObservableObject {
 
     /// Performs the heavy database + filesystem reads off the main actor, then hands the
     /// results to `applyLoadedDB` back on the main actor.
-    private func loadEngineInBackground(_ store: CardStore) {
+    private func loadEngineInBackground(_ store: Database) {
         Task.detached(priority: .userInitiated) { [weak self] in
             let state = Perf.signposter.beginInterval("db.load")
             let t0 = Perf.now()
             // The Rust engine reads the DB itself (read-only) and builds the search index —
             // keep it off the main actor, it prepares all 35k names plus the filter fields.
             let engine = (try? SearchIndex.open(dbPath: Paths.databaseURL.path)) ?? SearchIndex.empty()
-            let recents = (try? store.recentlyAdded()) ?? []
-            let artCount = (try? store.artworkCount()) ?? 0
+            let recents = ((try? store.recentlyAdded(lookbackDays: 30, limit: 200)) ?? []).compactMap(\.recent)
+            let artCount = Int((try? store.artworkCount()) ?? 0)
             Perf.signposter.endInterval("db.load", state)
             Perf.log.notice("perf db.load \(String(format: "%.2f", (Perf.now() - t0) * 1000), privacy: .public) ms")
             await self?.applyLoadedDB(engine: engine, recents: recents, artCount: artCount)
@@ -338,19 +338,19 @@ final class AppModel: ObservableObject {
 
     /// Reads a card and its printings. `nonisolated async` so it runs on the cooperative thread
     /// pool instead of the main actor (some cards have 800+ printings to read and decode).
-    private nonisolated static func loadDetail(id: String, store: CardStore)
+    private nonisolated static func loadDetail(id: String, store: Database)
         async -> (card: Card, printings: [Card.Printing])? {
         Perf.measure("detail.load") {
-            guard let card = try? store.card(id: id) else { return nil }
+            guard let card = (try? store.card(id: id)).flatMap({ $0 })?.card else { return nil }
             return (card, printings(for: card, store: store))
         }
     }
 
     /// Loads a card's printings (empty if it has no `oracleID`, e.g. ingested before printings
     /// existed or before the first --printings refresh).
-    private nonisolated static func printings(for card: Card, store: CardStore) -> [Card.Printing] {
+    private nonisolated static func printings(for card: Card, store: Database) -> [Card.Printing] {
         guard let oid = card.oracleID else { return [] }
-        return (try? store.printings(forOracleID: oid)) ?? []
+        return ((try? store.printings(oracleId: oid)) ?? []).map(\.printing)
     }
 
     func selectNext() {
@@ -443,7 +443,7 @@ final class AppModel: ObservableObject {
     /// the active list's cards. Called on launch and after any mutation.
     func reloadLists() {
         guard let store = store else { return }
-        lists = (try? store.loadLists()) ?? []
+        lists = ((try? store.loadLists()) ?? []).map(\.list)
         // Restore the persisted active list on first load; drop it if it was deleted.
         if activeListID == nil {
             activeListID = UserDefaults.standard.string(forKey: Self.activeListDefaultsKey)
@@ -464,7 +464,7 @@ final class AppModel: ObservableObject {
 
     func reloadActiveListCards() {
         guard let store = store, let id = activeListID else { activeListCards = []; return }
-        activeListCards = (try? store.listItems(listID: id)) ?? []
+        activeListCards = ((try? store.listItems(listId: id)) ?? []).map(\.mini)
     }
 
     func setActiveList(_ id: String?) {
@@ -509,7 +509,7 @@ final class AppModel: ObservableObject {
 
     func addCard(_ cardID: String, toList listID: String) {
         guard let store = store else { return }
-        try? store.addCard(cardID: cardID, toList: listID)
+        try? store.addCard(cardId: cardID, listId: listID)
         reloadLists()
     }
 
@@ -528,7 +528,7 @@ final class AppModel: ObservableObject {
 
     func removeCard(_ cardID: String, fromList listID: String) {
         guard let store = store else { return }
-        try? store.removeCard(cardID: cardID, fromList: listID)
+        try? store.removeCard(cardId: cardID, listId: listID)
         reloadLists()
     }
 
@@ -538,7 +538,7 @@ final class AppModel: ObservableObject {
         var ordered = activeListCards
         ordered.move(fromOffsets: source, toOffset: destination)
         activeListCards = ordered   // optimistic UI update
-        try? store.setListOrder(listID: listID, orderedCardIDs: ordered.map(\.id))
+        try? store.setListOrder(listId: listID, orderedCardIds: ordered.map(\.id))
     }
 
     // MARK: - Image cache
@@ -560,7 +560,7 @@ final class AppModel: ObservableObject {
 
     /// Refreshes the published artwork count and art-cache size.
     func refreshArtworkState() {
-        artworkCount = (try? store?.artworkCount()) ?? 0
+        artworkCount = Int((try? store?.artworkCount()) ?? 0)
         let bytes = (try? ImageCache.size(at: Paths.artDir)) ?? 0
         artCacheSizeFormatted = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
@@ -570,7 +570,7 @@ final class AppModel: ObservableObject {
 
     /// All artworks for building a game (loaded fresh; ~48k tiny rows).
     func loadArtworks() -> [Artwork] {
-        (try? store?.loadArtworks()) ?? []
+        ((try? store?.artworks()) ?? []).map(\.artwork)
     }
 
     /// Ingests `unique_artwork` metadata (optionally all art_crops for offline) via the
@@ -631,12 +631,12 @@ final class AppModel: ObservableObject {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
-            guard let remote = await UpdateChecker.fetchLatestStamp() else { return }
+            guard let remote = await latestOracleStamp() else { return }
             defaults.set(now, forKey: UpdateKeys.lastCheck)
-            let ingested = (try? self.store?.meta("bulk_updated_at")) ?? nil
+            let ingested = (try? self.store?.meta(key: "bulk_updated_at")) ?? nil
             // Newer bulk → silently ingest card text so search stays current. The dot
             // is decided afterward from the actual new-card count.
-            if UpdateChecker.isNewerThanIngested(remote: remote, ingested: ingested) {
+            if isNewerThanIngested(remote: remote, ingested: ingested) {
                 self.runSilentIngest(stamp: remote)
             }
         }
@@ -660,8 +660,8 @@ final class AppModel: ObservableObject {
                         self.refreshDBState()
                         let dismissed = UserDefaults.standard.string(forKey: UpdateKeys.dismissedStamp)
                         let suppressed: Bool = {
-                            guard let dismissed, let d = UpdateChecker.parse(dismissed),
-                                  let r = UpdateChecker.parse(stamp) else { return false }
+                            guard let dismissed, let d = stampUnixMs(stamp: dismissed),
+                                  let r = stampUnixMs(stamp: stamp) else { return false }
                             return d >= r
                         }()
                         if let added = event.newCards, added > 0, !suppressed {
@@ -718,7 +718,7 @@ final class AppModel: ObservableObject {
 
     /// Human-friendly form of `availableUpdateStamp` for banners/Settings.
     var availableUpdateDisplay: String? {
-        guard let stamp = availableUpdateStamp, let date = UpdateChecker.parse(stamp) else { return nil }
+        guard let stamp = availableUpdateStamp, let date = stampDate(stamp) else { return nil }
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .none

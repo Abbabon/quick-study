@@ -16,7 +16,6 @@ let package = Package(
         .library(name: "Shared", targets: ["Shared"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.29.0"),
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "2.0.0"),
     ],
     targets: [
@@ -25,13 +24,12 @@ let package = Package(
         .target(
             name: "EngineBindings",
             dependencies: ["engineFFI"],
-            path: "Sources/EngineBindings"
+            path: "Sources/EngineBindings",
+            // The static lib links the system SQLite (rusqlite without `bundled`); GRDB used to pull it in.
+            linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .target(
             name: "Shared",
-            dependencies: [
-                .product(name: "GRDB", package: "GRDB.swift"),
-            ],
             path: "Sources/Shared"
         ),
         .executableTarget(

@@ -120,28 +120,6 @@ public struct Card: Codable, Equatable, Sendable {
         }
     }
 
-    /// Per-card metadata loaded into memory for inline search filters (`r:`/`c:`/`t:`/
-    /// `mv:`/`o:`). Kept separate from `Card.Mini` (which stays lean for name ranking) and
-    /// keyed by card `id` in `SearchEngine`. `rarities` is the set of every rarity the card
-    /// has ever been printed at (from the `printings` table, unioned with the representative
-    /// `rarity` as a fallback) — this is what makes `r:common` mean "ever printed common".
-    public struct FilterFields: Sendable, Equatable {
-        public let colors: [String]
-        public let typeLineLower: String?
-        public let oracleTextLower: String?
-        public let cmc: Double?
-        public let rarities: Set<String>
-
-        public init(colors: [String], typeLineLower: String?, oracleTextLower: String?,
-                    cmc: Double?, rarities: Set<String>) {
-            self.colors = colors
-            self.typeLineLower = typeLineLower
-            self.oracleTextLower = oracleTextLower
-            self.cmc = cmc
-            self.rarities = rarities
-        }
-    }
-
     /// Projection for the Recently Added column: identity for the thumbnail tint,
     /// set label, and `firstSeen` — the date the card first appeared in our DB —
     /// driving newest-first ordering, relative-time, and the ≤7-day "new" flag.
@@ -209,20 +187,6 @@ public struct Card: Codable, Equatable, Sendable {
             self.rarity = rarity
             self.digital = digital
             self.games = games
-        }
-    }
-
-    /// A set and the IDs of the cards printed in it. Built by `CardStore.loadSetIndex()`
-    /// and consumed by `SearchEngine` so a set query expands to all its member cards.
-    public struct SetGroup: Sendable, Equatable {
-        public let code: String
-        public let name: String
-        public let memberIDs: [String]
-
-        public init(code: String, name: String, memberIDs: [String]) {
-            self.code = code
-            self.name = name
-            self.memberIDs = memberIDs
         }
     }
 }
