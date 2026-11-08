@@ -4,7 +4,18 @@ public enum Paths {
     public static let appName = "QuickStudy"
     private static let legacyAppName = "MTGSpotlight"
 
+    /// Opt-in relocation of all data (parity tests, scratch DBs): `QUICKSTUDY_DATA_DIR=/some/dir`.
+    /// Logs go to `<dir>/logs`. Mirrored by `engine/src/paths.rs`.
+    private static var overrideDir: URL? {
+        guard let p = ProcessInfo.processInfo.environment["QUICKSTUDY_DATA_DIR"], !p.isEmpty else { return nil }
+        return URL(fileURLWithPath: p, isDirectory: true)
+    }
+
     public static var supportDir: URL {
+        if let dir = overrideDir {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir
+        }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let dir = base.appendingPathComponent(appName, isDirectory: true)
         // One-time migration from the old name. If the legacy dir exists and the new
@@ -39,6 +50,10 @@ public enum Paths {
     }
 
     public static var logsDir: URL {
+        if let dir = overrideDir?.appendingPathComponent("logs", isDirectory: true) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir
+        }
         let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
         let dir = base.appendingPathComponent("Logs/\(appName)", isDirectory: true)
         let legacy = base.appendingPathComponent("Logs/\(legacyAppName)", isDirectory: true)

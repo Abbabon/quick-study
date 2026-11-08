@@ -57,3 +57,4 @@ notarization-credentials*
 
 # Claude Code / tooling state
 .claude/
+engine/target/
