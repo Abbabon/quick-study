@@ -227,3 +227,21 @@ extension Perf {
         run(0)
     }
 }
+
+// MARK: - Fetcher smoke hook (debug/verification only, off unless opted in)
+
+extension Perf {
+    /// Triggers fetcher runs without driving the GUI — used to verify the bundled `mtg-fetcher`
+    /// end-to-end inside the App Sandbox. Armed only for a launch that opts in:
+    ///
+    ///     open -a QuickStudy --args -debugFetcher YES
+    ///     notifyutil -p com.abbabon.quickstudy.debug.refresh   # json → ingest → sets → printings
+    ///     notifyutil -p com.abbabon.quickstudy.debug.images    # images for the on-disk bulk file
+    static func installFetcherHook(refresh: @escaping () -> Void, images: @escaping () -> Void) {
+        guard UserDefaults.standard.bool(forKey: "debugFetcher") else { return }
+        var t1: Int32 = 0, t2: Int32 = 0
+        notify_register_dispatch("com.abbabon.quickstudy.debug.refresh", &t1, .main) { _ in refresh() }
+        notify_register_dispatch("com.abbabon.quickstudy.debug.images", &t2, .main) { _ in images() }
+        log.notice("debug fetcher hook armed")
+    }
+}

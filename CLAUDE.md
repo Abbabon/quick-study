@@ -55,12 +55,16 @@ swift test --filter SearchEngineTests.SearchEngineTests/testExactBeatsPrefix
 # Build, then install into /Applications (kills running instance, re-signs, relaunches)
 ./scripts/install-local.sh       # or: ./scripts/install-local.sh debug
 
+# The fetcher is Rust (engine/, toolchain pinned in engine/rust-toolchain.toml; install via rustup).
+cargo test --manifest-path engine/Cargo.toml          # schema-vs-GRDB, parse, upsert, reconcile tests
+cargo run --manifest-path engine/Cargo.toml --release -- --no-images
+# Add --printings to also run the sets + printings phases (~150 MB default_cards download; manual refresh only)
+cargo run --manifest-path engine/Cargo.toml --release -- --no-images --printings
+# Scratch run that never touches the real DB/images: QUICKSTUDY_DATA_DIR=/some/dir (logs go to <dir>/logs)
+
 # Dev iteration without the .app bundle — the app shells out to mtg-fetcher,
 # so MTG_FETCHER_PATH must point at the built binary or it won't find it.
-swift run mtg-fetcher --no-images
-# Add --printings to also run the sets + printings phases (~150 MB default_cards download; manual refresh only)
-swift run mtg-fetcher --no-images --printings
-MTG_FETCHER_PATH="$(swift build --show-bin-path)/mtg-fetcher" swift run QuickStudy
+MTG_FETCHER_PATH="$PWD/engine/target/release/mtg-fetcher" swift run QuickStudy   # GUI tests: use build-app.sh (swift run QuickStudy crashes without a bundle)
 
 # Regenerate the app icon (needs Python 3 + Pillow)
 python3 scripts/generate-icon.py
@@ -70,10 +74,10 @@ python3 scripts/generate-icon.py
 
 ## Architecture
 
-Two executables sharing one SQLite DB and one image directory under `~/Library/Application Support/QuickStudy/`. This split is the core design choice — keep it. The app never parses bulk JSON in-process; it always shells out.
+Two executables (a Swift app and a Rust CLI) sharing one SQLite DB and one image directory under `~/Library/Application Support/QuickStudy/`. This split is the core design choice — keep it. The app never parses bulk JSON in-process; it always shells out.
 
-- **`Sources/Shared`** — library imported by both executables. Owns `Paths`, the `Card` / `Card.Mini` models, and the GRDB-backed `CardStore` (migrations, upserts, meta kv). Any cross-boundary contract belongs here.
-- **`Sources/Fetcher`** (`mtg-fetcher` CLI) — the only writer. Core phases (`json` → `ingest` → `images` → `done`/`error`), each emitting one NDJSON line per progress tick to stdout, mirrored to `~/Library/Logs/QuickStudy/fetcher.log`. Optional phases: `sets` and `printings` (`--printings`, manual refresh only) and `artwork` (`--artwork` ingests unique_artwork metadata and exits; `--download-art` also downloads art crops in an `images` pass). `--images-only` reuses the on-disk bulk JSON and downloads only missing images, with no ingest. Idempotent and resumable: image downloads skip files already on disk; ingest is `INSERT … ON CONFLICT DO UPDATE`. `--no-images` skips the images phase.
+- **`Sources/Shared`** — Swift library used by the app. Owns `Paths`, the `Card` / `Card.Mini` models, and the GRDB-backed `CardStore` (migrations + reads + user card lists; card data is written only by the fetcher). Cross-boundary contracts (paths, schema) are mirrored in `engine/` (`paths.rs`, `db.rs`) — change both together.
+- **`engine/`** (Rust crate: lib + `mtg-fetcher` bin; stage 1 of `docs/rust-migration-plan.md`) — the only writer. Mirrors the GRDB schema v1–v9 (frozen) and records into GRDB's `grdb_migrations` ledger, so app and fetcher skip each other's migrations (`engine/tests/schema.rs` diffs `sqlite_master` against a GRDB-created fixture). Streams bulk JSONL (no whole-file decode), gunzips in-process (`flate2`), throttles progress to ~10/s, downloads images 32-wide with batched DB writes. Core phases (`json` → `ingest` → `images` → `done`/`error`), each emitting one NDJSON line per progress tick to stdout, mirrored to `~/Library/Logs/QuickStudy/fetcher.log`. Optional phases: `sets` and `printings` (`--printings`, manual refresh only) and `artwork` (`--artwork` ingests unique_artwork metadata and exits; `--download-art` also downloads art crops in an `images` pass). `--images-only` reuses the on-disk bulk JSON and downloads only missing images, with no ingest. Idempotent and resumable: image downloads skip files already on disk; ingest is `INSERT … ON CONFLICT DO UPDATE`. `--no-images` skips the images phase.
 - **Known constraint:** `SearchPanel` uses `onKeyPress`, which requires macOS 14. The package minimum is already macOS 14 (`Package.swift`); lowering it means replacing those handlers with an `NSEvent` local key monitor in `PanelController`.
 - **`Sources/QuickStudy`** (SwiftUI menu-bar app) — runs as a `.regular` Dock app (`LSUIElement = NO` + `NSApp.setActivationPolicy(.regular)`) while also living in the menu bar. `AppDelegate` wires the global hotkey via Sindre Sorhus's `KeyboardShortcuts`. `PanelController` is a borderless non-activating `NSPanel` with an `NSVisualEffectView` (`.hudWindow`) — Spotlight-style. `AppModel` (`@MainActor ObservableObject`) holds query/results/refresh state and owns `SearchEngine`, `CardStore`, `FetcherProcess`, and an `NSCache` for full-row detail.
 
@@ -82,10 +86,10 @@ Two executables sharing one SQLite DB and one image directory under `~/Library/A
 `FetcherProcess` spawns `mtg-fetcher`, reads stdout incrementally via `Pipe.readabilityHandler`, splits on `\n`, decodes each NDJSON line, and forwards to `AppModel.applyFetcherEvent(_:)` on the main actor. Schema:
 
 ```json
-{"phase":"json|ingest|images|sets|printings|artwork|start|done|error","done":<int|null>,"total":<int|null>,"message":<string|null>}
+{"phase":"json|ingest|images|sets|printings|artwork|start|done|error","done":<int|null>,"total":<int|null>,"message":<string|null>,"newCards":<int|null>}
 ```
 
-When adding a new phase or field, update both `Fetcher/ProgressEmitter.swift` and `QuickStudy/FetcherProcess.swift` in lockstep.
+`newCards` is set only on the final `done` of an ingest run (brand-new cards added). Absent fields are omitted. When adding a new phase or field, update both `engine/src/progress.rs` and `QuickStudy/FetcherProcess.swift` (plus the captured-output test `FetcherEventDecodeTests`) in lockstep.
 
 ### Search engine
 
@@ -97,7 +101,7 @@ GRDB with WAL + `synchronous=NORMAL`. Migrations via `DatabaseMigrator` in `Card
 
 ### Bundling
 
-`scripts/build-app.sh` assembles the `.app` from `swift build` output: both binaries land in `Contents/MacOS/` (so the app finds `mtg-fetcher` next to itself without `MTG_FETCHER_PATH`), `Info.plist` and `AppIcon.icns` go to standard locations, then ad-hoc codesigned. Don't rely on Xcode project files — there are none.
+`scripts/build-app.sh` assembles the `.app` from `swift build` output plus the Rust fetcher (`scripts/build-fetcher.sh` → `cargo build --release --target aarch64-apple-darwin`; arm64-only): both binaries land in `Contents/MacOS/` (so the app finds `mtg-fetcher` next to itself without `MTG_FETCHER_PATH`), `Info.plist` and `AppIcon.icns` go to standard locations, then ad-hoc codesigned. Don't rely on Xcode project files — there are none.
 
 ## Reference docs
 

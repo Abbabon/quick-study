@@ -65,13 +65,16 @@ swift build -c "$CONFIG" -Xswiftc -DAPPSTORE
 
 BIN_DIR="$(swift build -c "$CONFIG" -Xswiftc -DAPPSTORE --show-bin-path)"
 
+echo "==> Building Rust mtg-fetcher ($CONFIG)…"
+FETCHER="$("$ROOT/scripts/build-fetcher.sh" "$CONFIG")"
+
 echo "==> Assembling app bundle at $APP"
 rm -rf "$DIST"
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
 
 cp "$BIN_DIR/QuickStudy"   "$APP/Contents/MacOS/QuickStudy"
-cp "$BIN_DIR/mtg-fetcher"  "$APP/Contents/MacOS/mtg-fetcher"
+cp "$FETCHER"              "$APP/Contents/MacOS/mtg-fetcher"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then

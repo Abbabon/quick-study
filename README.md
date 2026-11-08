@@ -72,8 +72,8 @@ open ./dist/QuickStudy.app
 For development, you can also run the executables directly:
 
 ```sh
-swift run mtg-fetcher --no-images     # ingest cards only
-MTG_FETCHER_PATH="$(swift build --show-bin-path)/mtg-fetcher" swift run QuickStudy
+cargo run --manifest-path engine/Cargo.toml --release -- --no-images   # ingest cards only (needs Rust: https://rustup.rs)
+MTG_FETCHER_PATH="$PWD/engine/target/release/mtg-fetcher" swift run QuickStudy
 ```
 
 The `MTG_FETCHER_PATH` env var is only needed for the un-bundled dev run; the `.app` bundle places `mtg-fetcher` next to the main executable so the app finds it automatically.

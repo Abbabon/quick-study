@@ -49,12 +49,18 @@ final class FetcherProcess {
         }
     }
 
-    private struct EventDecoded: Decodable {
+    struct EventDecoded: Decodable {
         let phase: String
         let done: Int?
         let total: Int?
         let message: String?
         let newCards: Int?
+    }
+
+    /// Decodes one NDJSON line from the fetcher (nil if it isn't a valid event).
+    static func decodeEvent(_ line: Data) -> Event? {
+        guard let d = try? JSONDecoder().decode(EventDecoded.self, from: line) else { return nil }
+        return Event(phase: d.phase, done: d.done, total: d.total, message: d.message, newCards: d.newCards)
     }
 
     /// Resolves the path to `mtg-fetcher`.
@@ -95,10 +101,7 @@ final class FetcherProcess {
             let chunk = handle.availableData
             if chunk.isEmpty { return }
             for line in buffer.append(chunk) {
-                if let decoded = try? JSONDecoder().decode(EventDecoded.self, from: line) {
-                    onEvent(Event(phase: decoded.phase, done: decoded.done, total: decoded.total,
-                                  message: decoded.message, newCards: decoded.newCards))
-                }
+                if let event = Self.decodeEvent(line) { onEvent(event) }
             }
         }
 
