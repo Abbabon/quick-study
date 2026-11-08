@@ -33,9 +33,11 @@ DerivedData/
 # Build / release output
 build/
 dist/
+dist-appstore/
 *.app
 *.dmg
 *.zip
+*.pkg
 
 # Coverage / profiling
 *.profdata
