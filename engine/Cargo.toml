@@ -33,7 +33,7 @@ strip = true
 flate2 = "1.1.11"
 futures-util = "0.3.34"
 reqwest = { version = "0.13.5", default-features = false, features = ["http2", "rustls", "stream"] }
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite = "0.40.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 uniffi = { version = "0.29", optional = true }

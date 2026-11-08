@@ -83,7 +83,7 @@ Rust is a goal in its own right, not only a perf fix.
 
 - `engine/Cargo.toml` with a pinned `rust-toolchain.toml`.
 - Deps:
-  - `rusqlite` (`bundled`);
+  - `rusqlite` (system libsqlite3 on macOS; `bundled` would give the app two SQLites);
   - `serde` / `serde_json` for streaming JSONL;
   - `flate2`;
   - `reqwest` (rustls) + `tokio`;
