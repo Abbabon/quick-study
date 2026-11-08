@@ -31,6 +31,7 @@ pub struct Artwork {
     pub art_crop_url: String, pub colors: Vec<String>, pub set_code: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct Printing {
     pub printing_id: String, pub oracle_id: String, pub set_code: String, pub set_name: String,
     pub collector_number: Option<String>, pub released_at: Option<String>, pub rarity: Option<String>,
@@ -179,9 +180,25 @@ pub fn parse_artworks(path: &Path) -> Result<Vec<Artwork>> {
 }
 pub fn parse_printings(path: &Path) -> Result<Vec<Printing>> {
     let mut v = vec![];
-    for_each_row(path, |r| { v.extend(r.into_printing()?); Ok(()) })?;
+    stream_printings(path, 1000, |b, _| { v.extend_from_slice(b); Ok(()) })?;
     Ok(v)
 }
+/// Streams printings in batches without holding the whole set (default_cards peaks ~1.5 GB
+/// if decoded whole). Returns the number of printings seen.
+pub fn stream_printings(path: &Path, batch: usize, mut f: impl FnMut(&[Printing], usize) -> Result<()>) -> Result<usize> {
+    let mut buf: Vec<Printing> = Vec::with_capacity(batch);
+    let mut n = 0;
+    for_each_row(path, |r| {
+        if let Some(p) = r.into_printing()? {
+            buf.push(p);
+            if buf.len() == batch { n += buf.len(); f(&buf, n)?; buf.clear(); }
+        }
+        Ok(())
+    })?;
+    if !buf.is_empty() { n += buf.len(); f(&buf, n)?; }
+    Ok(n)
+}
+
 pub fn parse_image_refs(path: &Path) -> Result<Vec<CardImageRef>> {
     let mut v = vec![];
     for_each_row(path, |r| { v.extend(r.into_image_ref()); Ok(()) })?;

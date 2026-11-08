@@ -105,9 +105,10 @@ pub async fn run(flags: Flags, em: &Emitter) -> Result<()> {
             client.download_bulk(&pinfo, &dpath).await?;
         }
         em.msg("printings", "parsing printings");
-        let prints = scryfall::parse_printings(&dpath)?;
-        em.progress("printings", 0, prints.len());
-        batched(&prints, |b| db::upsert_printings(&mut conn, b), |d| em.progress("printings", d, prints.len()))?;
+        // Two streaming passes (count, then upsert) keep peak memory flat; the app needs `total` up front.
+        let total = scryfall::stream_printings(&dpath, 1000, |_, _| Ok(()))?;
+        em.progress("printings", 0, total);
+        scryfall::stream_printings(&dpath, 1000, |b, n| { db::upsert_printings(&mut conn, b)?; em.progress("printings", n, total); Ok(()) })?;
         db::set_meta(&conn, "printings_updated_at", &pinfo.updated_at)?;
     }
 

@@ -1,0 +1,31 @@
+table|artworks|artworks|CREATE TABLE "artworks" ("illustration_id" TEXT PRIMARY KEY, "card_id" TEXT NOT NULL, "card_name" TEXT NOT NULL, "card_name_lower" TEXT NOT NULL, "artist" TEXT NOT NULL, "artist_lower" TEXT NOT NULL, "art_crop_url" TEXT NOT NULL, "colors" TEXT NOT NULL DEFAULT '[]', "set_code" TEXT)
+index|artworks_on_artist|artworks|CREATE INDEX "artworks_on_artist" ON "artworks"("artist")
+table|card_list_items|card_list_items|CREATE TABLE "card_list_items" ("list_id" TEXT NOT NULL, "card_id" TEXT NOT NULL, "position" INTEGER NOT NULL, "added_at" TEXT NOT NULL, PRIMARY KEY ("list_id", "card_id"))
+index|card_list_items_on_list_id|card_list_items|CREATE INDEX "card_list_items_on_list_id" ON "card_list_items"("list_id")
+table|card_lists|card_lists|CREATE TABLE "card_lists" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "name_lower" TEXT NOT NULL, "created_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL)
+table|cards|cards|CREATE TABLE "cards" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "name_lower" TEXT NOT NULL, "mana_cost" TEXT, "type_line" TEXT, "oracle_text" TEXT, "power" TEXT, "toughness" TEXT, "colors" TEXT NOT NULL DEFAULT '[]', "image_path" TEXT, "scryfall_uri" TEXT NOT NULL, "date_added" TEXT, "set_code" TEXT, "set_name" TEXT, "first_seen" TEXT, "oracle_id" TEXT, "rarity" TEXT, "cmc" DOUBLE)
+index|cards_on_first_seen|cards|CREATE INDEX "cards_on_first_seen" ON "cards"("first_seen")
+index|cards_on_name_lower|cards|CREATE INDEX "cards_on_name_lower" ON "cards"("name_lower")
+index|cards_on_oracle_id|cards|CREATE INDEX "cards_on_oracle_id" ON "cards"("oracle_id")
+table|grdb_migrations|grdb_migrations|CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)
+table|meta|meta|CREATE TABLE "meta" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)
+table|printings|printings|CREATE TABLE "printings" ("printing_id" TEXT PRIMARY KEY, "oracle_id" TEXT, "set_code" TEXT NOT NULL, "set_name" TEXT NOT NULL, "collector_number" TEXT, "released_at" TEXT, "rarity" TEXT, "digital" INTEGER NOT NULL DEFAULT 0, "games" TEXT NOT NULL DEFAULT '[]')
+index|printings_on_oracle_id|printings|CREATE INDEX "printings_on_oracle_id" ON "printings"("oracle_id")
+table|sets|sets|CREATE TABLE "sets" ("code" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "released_at" TEXT, "set_type" TEXT, "card_count" INTEGER, "icon_svg_uri" TEXT)
+index|sqlite_autoindex_artworks_1|artworks|
+index|sqlite_autoindex_card_list_items_1|card_list_items|
+index|sqlite_autoindex_card_lists_1|card_lists|
+index|sqlite_autoindex_cards_1|cards|
+index|sqlite_autoindex_grdb_migrations_1|grdb_migrations|
+index|sqlite_autoindex_meta_1|meta|
+index|sqlite_autoindex_printings_1|printings|
+index|sqlite_autoindex_sets_1|sets|
+ledger|v1
+ledger|v2
+ledger|v3
+ledger|v4
+ledger|v5
+ledger|v6
+ledger|v7
+ledger|v8
+ledger|v9
