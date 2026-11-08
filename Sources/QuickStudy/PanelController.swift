@@ -93,7 +93,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        let start = Perf.interactionStart()
+        let start = Perf.now()   // hotkey/Carbon dispatch before this point isn't visible to us
         let first = panel == nil
         let currentScale = UIScale.current().value
         if let existing = panel, currentScale != panelScale {

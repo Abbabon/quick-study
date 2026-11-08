@@ -8,8 +8,8 @@
 | Target | Before | After | Met? |
 |---|---|---|---|
 | `SearchEngine.search` p99 < 1 ms (real 35.8k-card corpus, release bench) | p50 44.9 ms · p99 102.4 ms | p50 0.09 ms · p99 0.87–0.89 ms | **Yes** |
-| Keystroke → results drawn p99 < 16 ms (installed app) | p50 74 ms · p99 99 ms | p50 23 ms · p99 60 ms (quiet machine) | **No** |
-| Hotkey → panel, warm < 100 ms | p50 61 ms · max 102 ms | p50 66–69 ms · max 86–92 ms (quiet machine) | Borderline yes, but see the open question below |
+| Keystroke → results drawn p99 < 16 ms (installed app) | p50 74 ms · p99 99 ms | p50 23 ms · p99 60 ms (quiet machine, Stage 0); render work then cut a further 30–55% in Stage 0b (bench p50 5.5 → 3.5 ms, p90 12 → 5 ms) | **No** (see Stage 0b: at typing pace the same work takes ~5× the CPU) |
+| Hotkey → panel, warm < 100 ms | p50 61 ms · max 102 ms | p50 10 ms · max 20 ms (Stage 0b, replay) | **Yes** (the ~425 ms reading was an instrumentation artifact, see Stage 0b) |
 | Hotkey → panel, first open < 300 ms | 249 ms | 186–258 ms (osascript), 108–147 ms (replay) | **Yes** |
 | Launch DB load (search usable) | 2.3–2.7 s | 0.76 s | Not a Q16 target; fixed in passing |
 
@@ -111,11 +111,11 @@ Experiments, measured as main-thread CPU p50 over 3 replay runs:
 
 | Change | Result | Kept? |
 |---|---|---|
-| Hide the Recently Added and Lists columns | no change (21.0 vs 20.8 ms) | n/a |
+| Hide the Recently Added and Lists columns | no change (21.0 vs 20.8 ms); the Stage 0b bench later showed −2.6 ms | Fixed in Stage 0b |
 | Stub out `CardPreview` | p50 unchanged, p90 −8 ms | n/a |
 | Stub out `ResultList` | −5 ms | n/a |
 | `ResultList` LazyVStack → VStack | +6 ms | Reverted |
-| Rows keyed by position + `.task(id:)` thumbnails | +4 ms | Reverted |
+| Rows keyed by position + `.task(id:)` thumbnails | +4 ms (replay noise); the Stage 0b bench later showed p90 −42% | Adopted in Stage 0b |
 | `CardPreview` `Equatable` + fixed-height printings list + searching in the field binding (one render pass instead of two) | 25 vs 20 ms, inside the noise on a loaded machine | Reverted as unproven |
 
 Thumbnail JPEG decode is not on the main thread. `NSImage(contentsOf:)` is lazy, and the decode happens on Core Animation worker threads, so it was left alone. The fetcher-progress, Settings/game-window folder-scan and `GameSession` suspects are not on the typing or hotkey path, so they were not touched.
@@ -126,11 +126,86 @@ Next steps for the 16 ms target, all on the UI side:
 - cut row cost in `ResultList.Row` (per-row `contextMenu`, background shape, hairline ring);
 - avoid relaying out the preview when the top card doesn't change.
 
-## Open question: warm open after Esc
+## Stage 0b (follow-up): warm reopen and keystroke render
 
-With the replay hook, a panel open while the app is still active after a previous hide took about 425 ms wall time, but only about 4 ms of main-thread CPU. `NSApp.activate` and `makeKeyAndOrderFront` each took under 12 ms. An open after another app was frontmost took 23–53 ms. So the time is spent waiting, not computing. It may be WindowServer, which was at 30–50% CPU at the time.
+### Warm reopen after Esc: a measurement artifact, not a stall
 
-The quiet-machine osascript runs went through Finder between opens and showed 46–92 ms. It was not confirmed with the real hotkey in the "Esc, then hotkey again" sequence: the user was at the machine, and synthetic keystrokes could have gone to their terminal. Re-check on a quiet machine. If it reproduces, the likely next step is to make the nonactivating panel key without a full app activation.
+- **The reading.** The ~425 ms reopen (with ~4 ms main-thread CPU) came from `Perf.interactionStart()`. It took its start time from `NSApp.currentEvent`, which is simply the last event the app processed.
+- **Why it was wrong.** In the replay, `show()` runs from a timer about 4 replay steps after the last key-down, so the start was backdated by ~400 ms. No real wait was involved: `NSApp.activate` and `makeKeyAndOrderFront` each took < 12 ms.
+- **The fix (instrumentation only).**
+  - `panel.open` now starts at `show()`.
+  - Searches take their start from a local key-down monitor, and each key-down is used once.
+- **Re-measured warm opens:**
+  - right after the fix: 5–56 ms (p50 14 ms);
+  - on the final build: 7–20 ms (p50 10 ms, CPU 3 ms).
+
+  Both cases are covered: the app still active after a hide, and another app frontmost (the replay hands focus back between runs). In both, the replay's key events reached the search field, so keyboard focus works.
+- **Not covered.** The real Carbon hotkey dispatch before `show()` is outside what the app can see.
+
+### Keystroke render: profiled, two root causes fixed
+
+**How it was profiled:**
+
+- **SwiftUI instrument.** View-update time, attributed to the nearest app view, put most of it in the result rows: `RarityBadge`, `Thumbnail`, the `ResultList` row modifiers, and explicit `.id` (`IDView`).
+- **A new synchronous bench.** It sets the query, then forces SwiftUI update, layout, display and the CA commit inline. It keeps the minimum main-thread CPU per step over 5 repeats, which made A/B comparisons reliable to ±0.3 ms on a busy machine.
+  - Run it: launch with `--args -perfReplay YES`, then `notifyutil -p com.abbabon.quickstudy.perf.bench`.
+  - The bench walks 72 typing/deleting steps over "lightning bolt", "llanowar elves" and "sol ring".
+- **Stub experiments** (bench p50 / p90):
+
+| Stubbed out | Effect |
+|---|---|
+| Card preview | −0.1 ms |
+| Header buttons | −0.1 ms |
+| Count footer | −0.1 ms |
+| Row context menu | ~0 |
+| Row thumbnail | ~0 |
+| Row badge | −0.3 / −2 ms |
+| Recently Added column (unchanged by typing) | −1.2 ms |
+| Lists column (unchanged by typing) | −1.4 ms |
+| Whole results list | −2.2 ms p50, and removed the 12–15 ms spikes |
+
+Rows that are re-filled are cheap. The cost was rows being *created*: ~0.35 ms each, and every keystroke replaced most of the 20.
+
+**Root causes and fixes:**
+
+1. **Result rows were keyed by card id.**
+   - Typing swapped most row identities, so SwiftUI tore down and rebuilt row subgraphs on every key.
+   - Rows are now keyed by position and refilled in place.
+   - `Thumbnail` now loads via `.task(id:)` and only shows an image whose id matches, so a reused row never shows another card's art.
+   - Rows take the UI scale from the list rather than one `@AppStorage` each.
+2. **The Lists and Recently Added columns observed the whole model.**
+   - Together with their rows, they re-rendered on every keystroke without changing.
+   - They now receive only the values they display and are `Equatable` (`.equatable()`), with the model kept for actions.
+
+**Bench, main-thread CPU per step, min over repeats:**
+
+| | p50 | p90 | max |
+|---|---|---|---|
+| Back-to-back steps, before | 5.1–5.9 ms | 10.8–12.4 ms | 12.9–14.7 ms |
+| Back-to-back steps, after | 3.3–3.8 ms | 4.8–5.4 ms | 8.7–9.1 ms |
+| 100 ms idle before each step (typing pace), before | 28.6 ms | 43.0 ms | 49.6 ms |
+| 100 ms idle before each step (typing pace), after | 22.1 ms | 29.6 ms | 41.6 ms |
+
+**Replay** (real key events through NSTextView; load average 9–10, so wall-clock is noisy):
+
+- keystroke main-thread CPU: p50 18.6 ms, p90 45.8 ms, p99 96.6 ms;
+- first frame (wall): p50 39.6 ms, p99 144.5 ms.
+
+Per-pass CPU logging shows almost all of each keystroke's CPU lands in the first run-loop pass. The 3–10 later passes cost ~0 ms, so animations and thumbnail completions are not the problem.
+
+### Why the 16 ms p99 target is still missed
+
+- **Same code, 5–7× the CPU time.** The app-side render work is now 3.3–3.8 ms p50 and < 9 ms worst case when measured back-to-back. With 100 ms of idle before each step, as in real typing, the identical steps cost 17–29 ms of main-thread CPU.
+- **This points at core state, not app code.** The likely cause is the core clocking down between keys, or the main thread landing on an efficiency core on this loaded machine. Every millisecond of intrinsic work costs ~5 ms at typing pace.
+- **Not yet checked: real keystrokes.** Real keys arrive through WindowServer with an interactive scheduling boost that the replay's in-app `NSApp.postEvent` events may not get. So the replay may overstate real typing. Check it with real keystrokes on a quiet machine. That needs external synthetic input or a person typing, which was not allowed while the user was at the machine.
+- **The remaining spike.** The first character after an empty field builds the whole results list and 20 rows: ~9 ms intrinsic, ~40 ms at typing pace.
+
+What closing the gap would take, roughly from cheapest to most effort:
+
+1. **Keep a pool of 20 row slots alive** across empty queries, so the first character refills rows instead of building them. This removes the spike.
+2. **Turn off `isMovableByWindowBackground`.** It is −0.35 ms (9%) per step, because AppKit recomputes the panel's opaque/draggable regions on each commit. It changes how the panel is dragged, so it was not done.
+3. **Move the results list to an `NSTableView`** with cell reuse. It is a contained rewrite of one view, and the most likely way to get per-key work to ~1 ms.
+4. **Confirm the real-keystroke numbers** first. If real HID input gets the scheduling boost, the shipped build may already be close to the target.
 
 ## Caveats
 

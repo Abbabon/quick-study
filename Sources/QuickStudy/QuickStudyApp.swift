@@ -38,10 +38,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Appearance.apply(Appearance.current()) // honor the saved Light/Dark/Auto choice
 
         panel = PanelController(model: model)
+        Perf.installKeyMonitor()
         Perf.installReplayHook(show: { [weak self] in self?.panel.show() },
                                hide: { [weak self] in self?.panel.hide() },
                                reset: { [weak self] in self?.model.resetSearchState() },
-                               window: { [weak self] in self?.panel.window })
+                               window: { [weak self] in self?.panel.window },
+                               setQuery: { [weak self] in self?.model.query = $0 })
 
         model.onOpenSettings = { [weak self] in self?.settingsWindow.show() }
         model.onOpenGame = { [weak self] in self?.gameWindow.show() }

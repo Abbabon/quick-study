@@ -19,14 +19,20 @@ struct SearchPanel: View {
             Divider().opacity(0.3)
             HStack(spacing: 0) {
                 if model.showsRecentColumn && model.recentlyAddedExpanded {
-                    RecentlyAddedColumn(model: model)
+                    RecentlyAddedColumn(model: model, recents: model.recentlyAdded,
+                                        highlightedID: highlighted(in: model.recentlyAdded.map(\.id)))
+                        .equatable()
                         .transition(.move(edge: .leading).combined(with: .opacity))
                     Divider().opacity(0.5)
                 }
                 content
                 if model.dbState == .ready && model.listsColumnVisible {
                     Divider().opacity(0.5)
-                    ListsColumn(model: model)
+                    ListsColumn(model: model, lists: model.lists, activeListID: model.activeListID,
+                                activeListCards: model.activeListCards,
+                                renamingListID: model.renamingListID,
+                                highlightedID: highlighted(in: model.activeListCards.map(\.id)))
+                        .equatable()
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
@@ -50,6 +56,13 @@ struct SearchPanel: View {
         // highlighted and ↑↓ keep navigating the results.
         .onChange(of: model.searchFocusToken) { searchFocused = true }
         .onExitCommand(perform: onDismiss)
+    }
+
+    /// The selected card's id if it is in `ids`, so a side column only re-renders when its own
+    /// highlight changes.
+    private func highlighted(in ids: [String]) -> String? {
+        guard let id = model.selectedID, ids.contains(id) else { return nil }
+        return id
     }
 
     private var searchField: some View {

@@ -29,11 +29,14 @@ enum ThumbnailCache {
 struct Thumbnail: View {
     let id: String
     var identity: ColorIdentity = .colorless
-    @State private var image: NSImage?
+    /// The decoded image and the card it belongs to. A row can be reused for another card (the
+    /// results list keys rows by position), so an image only shows while its id still matches.
+    @State private var loaded: (id: String, image: NSImage)?
 
     var body: some View {
         Group {
-            if let image = image {
+            // Cache hit: shown synchronously so a revisited card appears instantly, no flash.
+            if let image = loaded?.id == id ? loaded?.image : ThumbnailCache.cached(id) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFill()
@@ -43,26 +46,21 @@ struct Thumbnail: View {
                 IdentityPlaceholder(identity: identity, cornerRadius: DS.Radius.xs)
             }
         }
-        .onAppear(perform: load)
+        .task(id: id) { await load() }
     }
 
-    private func load() {
-        // Cache hit: assign synchronously so a revisited card shows instantly, no flash.
-        if let cached = ThumbnailCache.cached(id) {
-            image = cached
-            return
-        }
-        // Miss: decode off the main thread, then hand the image back. The row may be
-        // reused for another card before the decode finishes, so re-check `id`.
+    /// Miss: decode off the main thread. `.task(id:)` cancels this when the row moves on to
+    /// another card, so a slow decode can't land on the wrong row.
+    private func load() async {
         let cardID = id
-        Task.detached(priority: .userInitiated) {
+        guard ThumbnailCache.cached(cardID) == nil else { return }
+        let img = await Task.detached(priority: .userInitiated) { () -> NSImage? in
             let url = Paths.imageURL(forCardID: cardID)
-            guard FileManager.default.fileExists(atPath: url.path),
-                  let img = Perf.measure("thumb.decode", { NSImage(contentsOf: url) }) else { return }
-            ThumbnailCache.store(img, for: cardID)
-            await MainActor.run {
-                if self.id == cardID { self.image = img }
-            }
-        }
+            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+            return Perf.measure("thumb.decode") { NSImage(contentsOf: url) }
+        }.value
+        guard let img else { return }
+        ThumbnailCache.store(img, for: cardID)
+        if !Task.isCancelled { loaded = (cardID, img) }
     }
 }

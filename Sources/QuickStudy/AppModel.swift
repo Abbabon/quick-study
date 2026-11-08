@@ -245,7 +245,7 @@ final class AppModel: ObservableObject {
     }
 
     func runSearch() {
-        let start = Perf.interactionStart()
+        let start = Perf.keystrokeStart()
         // Empty query → browse mode. Preserve a card opened from the Recently Added
         // column (this also guards the deferred onChange that `selectRecent` triggers
         // when it clears the query); otherwise fall back to the placeholder.
