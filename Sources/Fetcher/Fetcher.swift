@@ -20,10 +20,10 @@ struct FetcherMain {
 
             // Artwork pipeline: ingest unique_artwork metadata, optionally download all art_crops.
             if artwork {
-                let artBulkURL = Paths.supportDir.appendingPathComponent("bulk-unique-artwork.json", isDirectory: false)
+                let artBulkURL = Paths.supportDir.appendingPathComponent("bulk-unique-artwork.jsonl", isDirectory: false)
                 emitter.emit(phase: "json", message: "fetching unique_artwork bulk index")
                 let info = try await client.bulkInfo(type: "unique_artwork")
-                emitter.emit(phase: "json", message: "artwork bulk size \(info.size) updated_at \(info.updated_at)")
+                emitter.emit(phase: "json", message: "artwork bulk size \(info.compressed_size ?? 0) updated_at \(info.updated_at)")
                 try await client.downloadBulkJSON(from: info, to: artBulkURL)
                 emitter.emit(phase: "json", message: "artwork bulk JSON downloaded")
 
@@ -49,7 +49,7 @@ struct FetcherMain {
                 return
             }
 
-            let bulkURL = Paths.supportDir.appendingPathComponent("bulk-oracle.json", isDirectory: false)
+            let bulkURL = Paths.supportDir.appendingPathComponent("bulk-oracle.jsonl", isDirectory: false)
 
             // Images-only: reuse the bulk JSON already on disk (download it only if
             // missing) and download just the images not yet cached. No ingest.
@@ -72,7 +72,7 @@ struct FetcherMain {
             // 1. Fetch bulk-data index
             emitter.emit(phase: "json", message: "fetching bulk index")
             let info = try await client.bulkInfo(type: "oracle_cards")
-            emitter.emit(phase: "json", message: "bulk size \(info.size) updated_at \(info.updated_at)")
+            emitter.emit(phase: "json", message: "bulk size \(info.compressed_size ?? 0) updated_at \(info.updated_at)")
 
             // 2. Download bulk JSON
             try await client.downloadBulkJSON(from: info, to: bulkURL)
@@ -112,7 +112,7 @@ struct FetcherMain {
                 try store.upsertSets(sets)
                 emitter.emit(phase: "sets", done: sets.count, total: sets.count)
 
-                let defaultBulkURL = Paths.supportDir.appendingPathComponent("bulk-default.json", isDirectory: false)
+                let defaultBulkURL = Paths.supportDir.appendingPathComponent("bulk-default.jsonl", isDirectory: false)
                 emitter.emit(phase: "printings", message: "fetching default_cards bulk index")
                 let pInfo = try await client.bulkInfo(type: "default_cards")
                 // Re-download only when the file is missing or Scryfall's stamp moved.
