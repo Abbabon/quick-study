@@ -81,6 +81,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// re-showing it on a redundant activation (e.g. the `NSApp.activate` inside `show()`).
     var isVisible: Bool { panel?.isVisible ?? false }
 
+    /// The panel window, once created (for the perf replay hook).
+    var window: NSWindow? { panel }
+
     func toggle() {
         if let panel = panel, panel.isVisible {
             hide()
