@@ -73,7 +73,8 @@ python3 scripts/generate-icon.py
 Two executables sharing one SQLite DB and one image directory under `~/Library/Application Support/QuickStudy/`. This split is the core design choice — keep it. The app never parses bulk JSON in-process; it always shells out.
 
 - **`Sources/Shared`** — library imported by both executables. Owns `Paths`, the `Card` / `Card.Mini` models, and the GRDB-backed `CardStore` (migrations, upserts, meta kv). Any cross-boundary contract belongs here.
-- **`Sources/Fetcher`** (`mtg-fetcher` CLI) — the only writer. Four phases (`json` → `ingest` → `images` → `done`/`error`), each emitting one NDJSON line per progress tick to stdout, mirrored to `~/Library/Logs/QuickStudy/fetcher.log`. Idempotent and resumable: image downloads skip files already on disk; ingest is `INSERT … ON CONFLICT DO UPDATE`. `--no-images` skips phase 3.
+- **`Sources/Fetcher`** (`mtg-fetcher` CLI) — the only writer. Core phases (`json` → `ingest` → `images` → `done`/`error`), each emitting one NDJSON line per progress tick to stdout, mirrored to `~/Library/Logs/QuickStudy/fetcher.log`. Optional phases: `sets` and `printings` (`--printings`, manual refresh only) and `artwork` (`--artwork` ingests unique_artwork metadata and exits; `--download-art` also downloads art crops in an `images` pass). `--images-only` reuses the on-disk bulk JSON and downloads only missing images, with no ingest. Idempotent and resumable: image downloads skip files already on disk; ingest is `INSERT … ON CONFLICT DO UPDATE`. `--no-images` skips the images phase.
+- **Known constraint:** `SearchPanel` uses `onKeyPress`, which requires macOS 14. The package minimum is already macOS 14 (`Package.swift`); lowering it means replacing those handlers with an `NSEvent` local key monitor in `PanelController`.
 - **`Sources/QuickStudy`** (SwiftUI menu-bar app) — runs as a `.regular` Dock app (`LSUIElement = NO` + `NSApp.setActivationPolicy(.regular)`) while also living in the menu bar. `AppDelegate` wires the global hotkey via Sindre Sorhus's `KeyboardShortcuts`. `PanelController` is a borderless non-activating `NSPanel` with an `NSVisualEffectView` (`.hudWindow`) — Spotlight-style. `AppModel` (`@MainActor ObservableObject`) holds query/results/refresh state and owns `SearchEngine`, `CardStore`, `FetcherProcess`, and an `NSCache` for full-row detail.
 
 ### Subprocess protocol
@@ -81,7 +82,7 @@ Two executables sharing one SQLite DB and one image directory under `~/Library/A
 `FetcherProcess` spawns `mtg-fetcher`, reads stdout incrementally via `Pipe.readabilityHandler`, splits on `\n`, decodes each NDJSON line, and forwards to `AppModel.applyFetcherEvent(_:)` on the main actor. Schema:
 
 ```json
-{"phase":"json|ingest|images|sets|printings|start|done|error","done":<int|null>,"total":<int|null>,"message":<string|null>}
+{"phase":"json|ingest|images|sets|printings|artwork|start|done|error","done":<int|null>,"total":<int|null>,"message":<string|null>}
 ```
 
 When adding a new phase or field, update both `Fetcher/ProgressEmitter.swift` and `QuickStudy/FetcherProcess.swift` in lockstep.
@@ -92,7 +93,7 @@ When adding a new phase or field, update both `Fetcher/ProgressEmitter.swift` an
 
 ### Database
 
-GRDB with WAL + `synchronous=NORMAL`. Migrations via `DatabaseMigrator` in `CardStore`. `cards` table is indexed on `name_lower`; `meta` is a kv table (`last_refresh`, `bulk_updated_at`). Migration v6 adds `cards.oracle_id` (the join key to `printings`); v7 adds the `sets` table (code, name, set_type, card_count, `icon_svg_uri` — stored for future symbol rendering); v8 adds the `printings` table (one row per card+set, indexed on `oracle_id`). Schema changes require a new migration registered in `CardStore`.
+GRDB with WAL + `synchronous=NORMAL`. Migrations via `DatabaseMigrator` in `CardStore`. `cards` table is indexed on `name_lower`; `meta` is a kv table (`last_refresh`, `bulk_updated_at`). Migration v4 adds the `artworks` table (unique_artwork metadata); v5 adds `card_lists` and `card_list_items` (user card lists); v6 adds `cards.oracle_id` (the join key to `printings`); v7 adds the `sets` table (code, name, set_type, card_count, `icon_svg_uri` — stored for future symbol rendering); v8 adds the `printings` table (one row per card+set, indexed on `oracle_id`); v9 adds `cards.rarity` and `cards.cmc` (rows ingested before v9 stay NULL until the next ingest). Schema changes require a new migration registered in `CardStore`.
 
 ### Bundling
 
@@ -101,5 +102,4 @@ GRDB with WAL + `synchronous=NORMAL`. Migrations via `DatabaseMigrator` in `Card
 ## Reference docs
 
 - `docs/architecture.md` — full shipped design, including the per-file table, NSPanel flags, and a "suggested subtask split" for future work.
-- `docs/plan.md` — original spec and decision rationale; verification checklist at the end is the authoritative end-to-end test list.
-- `docs/STATUS.md` — known caveats (Sendable/StrictConcurrency, `onKeyPress` macOS-14 requirement, LaunchAgent toggle not yet wired).
+- `openspec/specs/` — current behavior requirements per capability.
