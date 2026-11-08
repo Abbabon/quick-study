@@ -132,8 +132,7 @@ If you previously used the app under its earlier name (MTGSpotlight), the data d
 │   └── SearchEngineTests/
 ├── Resources/
 │   ├── Info.plist
-│   ├── AppIcon.icns
-│   └── com.abbabon.quickstudy.refresh.plist   # weekly LaunchAgent template
+│   └── AppIcon.icns
 ├── scripts/
 │   ├── build-app.sh
 │   └── generate-icon.py
