@@ -179,7 +179,7 @@ extension Perf {
         // Optional idle gap before each step (-perfBenchGapMs 100) to mimic typing pace: the core
         // clocks down / work may land on an efficiency core between keys.
         let gap = UInt32(UserDefaults.standard.integer(forKey: "perfBenchGapMs")) * 1000
-        for _ in 0..<5 {
+        for _ in 0..<(gap > 0 ? 2 : 5) {   // gapped runs are slow; keep them ~15 s
             for (k, q) in steps.enumerated() {
                 if gap > 0 { usleep(gap) }
                 let c0 = threadCPU()
