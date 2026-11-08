@@ -5,8 +5,18 @@ import Shared
 /// Collapsible left column listing the most recently ingested cards.
 /// 222pt fixed width with a hairline trailing separator; body shows ~6 rows
 /// and scrolls for the rest of the 30-day window.
-struct RecentlyAddedColumn: View {
-    @ObservedObject var model: AppModel
+///
+/// Not an observer of the model (see `ListsColumn`): `Equatable` on what it shows, so typing
+/// doesn't re-render its 200 rows. `model` is only used for actions and the "new" cutoff.
+struct RecentlyAddedColumn: View, Equatable {
+    let model: AppModel
+    let recents: [Card.Recent]
+    /// The selected card's id when it is one of `recents` (else nil).
+    let highlightedID: String?
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.recents == b.recents && a.highlightedID == b.highlightedID
+    }
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
     var body: some View {
@@ -16,11 +26,11 @@ struct RecentlyAddedColumn: View {
             Divider().opacity(0.5)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: scale.pad(1)) {
-                    ForEach(model.recentlyAdded) { recent in
+                    ForEach(recents) { recent in
                         RecentRow(
                             recent: recent,
                             isNew: model.isNew(recent),
-                            selected: recent.id == model.selectedID
+                            selected: recent.id == highlightedID
                         ) {
                             model.selectRecent(recent)
                         }
@@ -41,8 +51,9 @@ struct RecentlyAddedColumn: View {
                 .foregroundStyle(.secondary)
             Text("Recently Added")
                 .font(scale.font(13, weight: .semibold))
-            if model.newCount > 0 {
-                Text("\(model.newCount) New")
+            let newCount = recents.filter(model.isNew).count
+            if newCount > 0 {
+                Text("\(newCount) New")
                     .font(scale.font(11, weight: .semibold))
                     .foregroundStyle(DS.accent)
                     .padding(.horizontal, scale.pad(8))

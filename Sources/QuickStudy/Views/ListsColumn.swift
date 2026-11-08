@@ -6,8 +6,24 @@ import Shared
 /// leading separator (added by the caller). Mirrors `RecentlyAddedColumn`'s shape: a
 /// header, a divider, then a scrolling body. Tapping a list makes it active and expands
 /// its cards inline; the active list's cards can be dragged to reorder.
-struct ListsColumn: View {
-    @ObservedObject var model: AppModel
+///
+/// Not an observer of the model: it gets the values it shows and is `Equatable` on them, so the
+/// panel's per-keystroke re-renders (query/results/selection) skip it entirely — observing the
+/// model cost ~1.4 ms per keystroke for a column that hadn't changed. `model` is only used for
+/// actions.
+struct ListsColumn: View, Equatable {
+    let model: AppModel
+    let lists: [CardList]
+    let activeListID: String?
+    let activeListCards: [Card.Mini]
+    let renamingListID: String?
+    /// The selected card's id when it is one of `activeListCards` (else nil).
+    let highlightedID: String?
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.lists == b.lists && a.activeListID == b.activeListID && a.activeListCards == b.activeListCards
+            && a.renamingListID == b.renamingListID && a.highlightedID == b.highlightedID
+    }
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
     var body: some View {
@@ -15,7 +31,7 @@ struct ListsColumn: View {
         VStack(alignment: .leading, spacing: 0) {
             header(scale: scale)
             Divider().opacity(0.5)
-            if model.lists.isEmpty {
+            if lists.isEmpty {
                 emptyState(scale: scale)
             } else {
                 listBody(scale: scale)
@@ -66,11 +82,12 @@ struct ListsColumn: View {
 
     private func listBody(scale: UIScale) -> some View {
         List {
-            ForEach(model.lists) { list in
+            ForEach(lists) { list in
                 ListHeaderRow(
                     model: model,
                     list: list,
-                    expanded: list.id == model.activeListID,
+                    expanded: list.id == activeListID,
+                    isRenaming: list.id == renamingListID,
                     scale: scale
                 )
                 .listRowInsets(EdgeInsets(top: scale.pad(2), leading: scale.pad(6),
@@ -78,8 +95,8 @@ struct ListsColumn: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
 
-                if list.id == model.activeListID {
-                    if model.activeListCards.isEmpty {
+                if list.id == activeListID {
+                    if activeListCards.isEmpty {
                         Text("Empty — add cards from search.")
                             .font(scale.font(11))
                             .foregroundStyle(.tertiary)
@@ -88,8 +105,9 @@ struct ListsColumn: View {
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                     } else {
-                        ForEach(model.activeListCards, id: \.id) { mini in
-                            ListCardRow(model: model, listID: list.id, mini: mini, scale: scale)
+                        ForEach(activeListCards, id: \.id) { mini in
+                            ListCardRow(model: model, listID: list.id, mini: mini,
+                                        selected: mini.id == highlightedID, scale: scale)
                                 .listRowInsets(EdgeInsets(top: scale.pad(1), leading: scale.pad(16),
                                                           bottom: scale.pad(1), trailing: scale.pad(6)))
                                 .listRowSeparator(.hidden)
@@ -100,7 +118,7 @@ struct ListsColumn: View {
                         }
                         .onDelete { offsets in
                             for i in offsets {
-                                model.removeCard(model.activeListCards[i].id, fromList: list.id)
+                                model.removeCard(activeListCards[i].id, fromList: list.id)
                             }
                         }
                     }
@@ -116,16 +134,15 @@ struct ListsColumn: View {
 /// A list's header row: disclosure chevron, name (or inline-rename field), and count.
 /// Tapping toggles active/expanded; right-click offers rename/delete.
 private struct ListHeaderRow: View {
-    @ObservedObject var model: AppModel
+    let model: AppModel
     let list: CardList
     let expanded: Bool
+    let isRenaming: Bool
     let scale: UIScale
 
     @State private var hovering = false
     @State private var draftName = ""
     @FocusState private var renameFocused: Bool
-
-    private var isRenaming: Bool { model.renamingListID == list.id }
 
     var body: some View {
         HStack(spacing: scale.pad(6)) {
@@ -169,8 +186,8 @@ private struct ListHeaderRow: View {
             Button("Rename") { startRename() }
             Button("Delete List", role: .destructive) { model.deleteList(list.id) }
         }
-        .onChange(of: model.renamingListID) { _, id in
-            if id == list.id { startRename() }
+        .onChange(of: isRenaming) { _, renaming in
+            if renaming { startRename() }
         }
         .onAppear {
             if isRenaming { startRename() }
@@ -193,9 +210,10 @@ private struct ListHeaderRow: View {
 /// One card inside an expanded list: thumbnail + name, tap to preview, remove via the
 /// trailing button (on hover) or the context menu. Draggable for reorder (via `.onMove`).
 private struct ListCardRow: View {
-    @ObservedObject var model: AppModel
+    let model: AppModel
     let listID: String
     let mini: Card.Mini
+    let selected: Bool
     let scale: UIScale
 
     @State private var hovering = false
@@ -225,7 +243,7 @@ private struct ListCardRow: View {
         .padding(.vertical, scale.pad(3))
         .background(
             RoundedRectangle(cornerRadius: DS.Radius.sm)
-                .fill(mini.id == model.selectedID ? DS.selection
+                .fill(selected ? DS.selection
                       : (hovering ? Color.primary.opacity(0.045) : .clear))
         )
         .contentShape(Rectangle())
