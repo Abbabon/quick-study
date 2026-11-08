@@ -111,11 +111,11 @@ Experiments, measured as main-thread CPU p50 over 3 replay runs:
 
 | Change | Result | Kept? |
 |---|---|---|
-| Hide the Recently Added and Lists columns | no change (21.0 vs 20.8 ms) | n/a |
+| Hide the Recently Added and Lists columns | no change (21.0 vs 20.8 ms); the Stage 0b bench later showed −2.6 ms | Fixed in Stage 0b |
 | Stub out `CardPreview` | p50 unchanged, p90 −8 ms | n/a |
 | Stub out `ResultList` | −5 ms | n/a |
 | `ResultList` LazyVStack → VStack | +6 ms | Reverted |
-| Rows keyed by position + `.task(id:)` thumbnails | +4 ms | Reverted |
+| Rows keyed by position + `.task(id:)` thumbnails | +4 ms (replay noise); the Stage 0b bench later showed p90 −42% | Adopted in Stage 0b |
 | `CardPreview` `Equatable` + fixed-height printings list + searching in the field binding (one render pass instead of two) | 25 vs 20 ms, inside the noise on a loaded machine | Reverted as unproven |
 
 Thumbnail JPEG decode is not on the main thread. `NSImage(contentsOf:)` is lazy, and the decode happens on Core Animation worker threads, so it was left alone. The fetcher-progress, Settings/game-window folder-scan and `GameSession` suspects are not on the typing or hotkey path, so they were not touched.
