@@ -19,8 +19,10 @@ BINDINGS="$ROOT/Sources/EngineBindings"
 
 # Cargo may not be on PATH in non-interactive shells (rustup installs to ~/.cargo/bin).
 export PATH="$HOME/.cargo/bin:$PATH"
-# Match the app's deployment target (SwiftPM warns on objects built for a newer macOS).
-export MACOSX_DEPLOYMENT_TARGET=14.0
+# Make the bundled C code (SQLite etc.) target the app's macOS 14 instead of the SDK's, or the
+# SwiftPM link warns. Not MACOSX_DEPLOYMENT_TARGET: that breaks fresh builds of proc-macro crates
+# ("can't find crate for time_macros") with the macOS 27 toolchain.
+export CFLAGS_aarch64_apple_darwin="-mmacosx-version-min=14.0"
 command -v cargo >/dev/null || { echo "ERROR: cargo not found — install Rust via https://rustup.rs" >&2; exit 1; }
 
 cargo_() { cargo "$@" --manifest-path "$ENGINE/Cargo.toml" --target "$TARGET" >&2; }
