@@ -103,3 +103,4 @@ GRDB with WAL + `synchronous=NORMAL`. Migrations via `DatabaseMigrator` in `Card
 
 - `docs/architecture.md` — full shipped design, including the per-file table, NSPanel flags, and a "suggested subtask split" for future work.
 - `openspec/specs/` — current behavior requirements per capability.
+- `docs/rust-migration-plan.md` — agreed staged plan for moving the engine to Rust (Stage 0 → fetcher → search → DB).
