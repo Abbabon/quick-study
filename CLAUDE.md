@@ -89,7 +89,7 @@ When adding a new phase or field, update both `Fetcher/ProgressEmitter.swift` an
 
 ### Search engine
 
-`SearchEngine` is intentionally synchronous, in-memory, no debounce, no SQLite hit per keystroke. All ~25k `Card.Mini` rows (~2 MB) are loaded at launch. Layered scorer: exact → prefix → token-start → substring → subsequence/initials, each with a `lengthBonus = max(0, 100 - name.count)` so short names win on ambiguous queries. Target latency <1 ms — `SearchEngineTests` golden cases protect ranking order; add a case there before tweaking weights. Detail rows for highlighted IDs are fetched lazily from SQLite via `NSCache`.
+`SearchEngine` is intentionally synchronous, in-memory, no debounce, no SQLite hit per keystroke. All ~36k `Card.Mini` rows are loaded (and the index built) off the main actor at launch. Layered scorer: exact → prefix → token-start → substring → subsequence/initials, each with a `lengthBonus = max(0, 100 - name.count)` so short names win on ambiguous queries. Printable-ASCII names are matched on a flattened byte buffer (exactly equivalent); others use the original String scorer. Target p99 <1 ms — `SearchEngineTests` golden cases protect ranking order (add a case before tweaking weights); `swift test -c release -Xswiftc -enable-testing --filter SearchEngineBenchmarkTests` benchmarks the real corpus and checks the fast path against the String reference. Perf numbers, instrumentation and the replay hook: `docs/perf-baseline.md`. Detail rows for highlighted IDs are fetched lazily from SQLite via `NSCache`.
 
 ### Database
 

@@ -114,8 +114,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         // `windowDidResignKey` immediately dismisses it — so the hotkey appears to do nothing
         // when the app isn't already frontmost. Ordering the panel front after activation
         // makes it the last (and therefore key) window.
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
+        Perf.measure("panel.activate") { NSApp.activate(ignoringOtherApps: true) }
+        Perf.measure("panel.orderFront") { panel.makeKeyAndOrderFront(nil) }
         // The hosting view is reused, so SwiftUI's `onAppear` won't re-fire — ask the search
         // field to retake focus now that the panel is key.
         model.focusSearchField()
