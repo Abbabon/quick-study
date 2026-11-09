@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "wand.and.stars", accessibilityDescription: "Quick Study")
+            button.image = MenuBarIcon.make()
         }
         let menu = NSMenu()
         updateMenuItem = NSMenuItem(title: "Download Images…",
