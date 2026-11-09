@@ -304,3 +304,14 @@ fn parsed_query_drives_filters_end_to_end() {
     assert_eq!(r.hits.iter().map(|h| h.name.as_str()).collect::<Vec<_>>(), ["Lightning Bolt"]);
     assert_eq!(r.total, 1);
 }
+
+#[test]
+fn paging_continues_the_same_ranking() {
+    let ix = filter_engine();
+    let all = ix.search("a", 100);
+    assert!(all.hits.len() >= 2);
+    let page = |o: usize, l: usize| ix.search("a", o + l).hits.into_iter().skip(o).map(|h| h.name).collect::<Vec<_>>();
+    let names: Vec<_> = all.hits.iter().map(|h| h.name.clone()).collect();
+    assert_eq!(page(0, 1), names[..1]);
+    assert_eq!(page(1, 100), names[1..]);
+}

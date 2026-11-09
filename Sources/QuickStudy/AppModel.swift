@@ -426,8 +426,18 @@ final class AppModel: ObservableObject {
         return out
     }
 
+    /// Appends the next page of the current query (scrolling/arrowing near the end of the list).
+    /// Same ranking as the first page; no-op once everything is loaded.
+    func loadMoreResults() {
+        guard !query.isEmpty, results.count < totalMatchCount else { return }
+        let page = engine.searchPage(query: query, offset: UInt32(results.count), limit: 50)
+        results += page.hits.map(\.mini)
+        totalMatchCount = Int(page.total)
+    }
+
     func selectNext() {
         guard !results.isEmpty else { return }
+        if results.firstIndex(where: { $0.id == selectedID }) == results.count - 1 { loadMoreResults() }
         let idx = results.firstIndex(where: { $0.id == selectedID }) ?? -1
         let next = min(idx + 1, results.count - 1)
         select(results[next].id)

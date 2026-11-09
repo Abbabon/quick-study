@@ -11,6 +11,7 @@ struct StartScreen: View {
     var body: some View {
         let scale = UIScale(value: uiScaleValue)
         return VStack(spacing: scale.pad(16)) {
+            AppTitleHeader(scale: scale)
             VStack(spacing: scale.pad(8)) {
                 Text("Type a card name")
                     .font(scale.font(17))
@@ -141,5 +142,17 @@ enum SetIconCache {
         img.isTemplate = true
         memory.setObject(img, forKey: code as NSString)
         return img
+    }
+}
+
+/// App name at the top of the start screen. Plain text for now; swap the body for a wordmark
+/// image when the header design lands.
+struct AppTitleHeader: View {
+    let scale: UIScale
+
+    var body: some View {
+        Text("Quick Study")
+            .font(scale.font(28, weight: .bold))
+            .lineLimit(1)
     }
 }

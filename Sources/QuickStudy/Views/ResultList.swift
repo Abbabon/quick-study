@@ -18,7 +18,8 @@ struct ResultList: View {
                         ForEach(model.results.indices, id: \.self) { i in
                             let mini = model.results[i]
                             Row(model: model, mini: mini, selected: mini.id == model.selectedID,
-                                scaleValue: uiScaleValue) {
+                                scaleValue: uiScaleValue,
+                                onAppear: { if i >= model.results.count - 5 { model.loadMoreResults() } }) {
                                 // Clicking the already-selected card returns to the start screen.
                                 if mini.id == model.selectedID { model.goHome(); return }
                                 model.select(mini.id, immediate: true)
@@ -70,6 +71,7 @@ struct ResultList: View {
         let selected: Bool
         /// Passed in rather than an `@AppStorage` per row (one defaults observer per row).
         let scaleValue: Double
+        let onAppear: () -> Void
         let onTap: () -> Void
 
         var body: some View {
@@ -90,6 +92,7 @@ struct ResultList: View {
                     .fill(selected ? DS.selectionStrong : Color.clear)
             )
             .contentShape(Rectangle())
+            .onAppear(perform: onAppear)
             .onTapGesture(perform: onTap)
             .contextMenu {
                 ForEach(model.lists) { list in
