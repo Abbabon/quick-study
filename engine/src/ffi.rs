@@ -1,6 +1,6 @@
 //! UniFFI surface for the Swift app: the search index, and `Database` (reads + card lists).
 use crate::search::{DEFAULT_LIMIT, Hit, Index};
-use crate::store::{self, ArtworkRow, CardDetail, ListSummary, PrintingRow, RecentCard};
+use crate::store::{self, ArtworkRow, CardDetail, ListSummary, PrintingRow, RecentCard, SetRow};
 use crate::{db, update};
 use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
@@ -94,6 +94,10 @@ impl Database {
     pub fn recently_added(&self, lookback_days: u32, limit: u32) -> Result<Vec<RecentCard>, EngineError> {
         store::recently_added(&lock(&self.read), lookback_days, limit).map_err(db_err)
     }
+    pub fn recent_sets(&self, limit: u32, preview_days: u32) -> Result<Vec<SetRow>, EngineError> {
+        store::recent_sets(&lock(&self.read), limit, preview_days).map_err(db_err)
+    }
+    pub fn random_card_id(&self) -> Result<Option<String>, EngineError> { store::random_card_id(&lock(&self.read)).map_err(db_err) }
     pub fn artworks(&self) -> Result<Vec<ArtworkRow>, EngineError> { store::artworks(&lock(&self.read)).map_err(db_err) }
 
     pub fn load_lists(&self) -> Result<Vec<ListSummary>, EngineError> { store::load_lists(&lock(&self.read)).map_err(db_err) }

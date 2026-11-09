@@ -54,6 +54,8 @@ final class AppModel: ObservableObject {
     @Published var imageCacheSizeFormatted: String = "—"
     /// Number of distinct artworks ingested for the game modes (0 = not downloaded yet).
     @Published var artworkCount: Int = 0
+    /// Newest main-line sets for the start screen; empty until a `--printings` refresh.
+    @Published var recentSets: [SetRow] = []
     @Published var artCacheSizeFormatted: String = "—"
     /// Number of brand-new cards ingested in the background whose images are not yet
     /// downloaded. Drives the menu-bar dot, dropdown item, and notification.
@@ -214,9 +216,10 @@ final class AppModel: ObservableObject {
             let engine = (try? SearchIndex.open(dbPath: Paths.databaseURL.path)) ?? SearchIndex.empty()
             let recents = ((try? store.recentlyAdded(lookbackDays: 30, limit: 200)) ?? []).compactMap(\.recent)
             let artCount = Int((try? store.artworkCount()) ?? 0)
+            let sets = (try? store.recentSets(limit: 4, previewDays: 14)) ?? []
             Perf.signposter.endInterval("db.load", state)
             Perf.log.notice("perf db.load \(String(format: "%.2f", (Perf.now() - t0) * 1000), privacy: .public) ms")
-            await self?.applyLoadedDB(engine: engine, recents: recents, artCount: artCount)
+            await self?.applyLoadedDB(engine: engine, recents: recents, artCount: artCount, sets: sets)
             // The image/art folder sizes (85k+ files to stat, often >1 s) only feed Settings —
             // computed after search is ready instead of delaying it.
             let (imageBytes, artBytes) = Perf.measure("cache.sizes") {
@@ -233,7 +236,8 @@ final class AppModel: ObservableObject {
 
     /// Applies the results of `loadEngineInBackground` and marks the DB ready.
     @MainActor
-    private func applyLoadedDB(engine: SearchIndex, recents: [Card.Recent], artCount: Int) {
+    private func applyLoadedDB(engine: SearchIndex, recents: [Card.Recent], artCount: Int, sets: [SetRow]) {
+        recentSets = sets
         self.engine = engine
         recentlyAdded = recents
         reloadLists()
@@ -288,6 +292,19 @@ final class AppModel: ObservableObject {
     /// Requests that the search field take keyboard focus on the next runloop tick.
     func focusSearchField() {
         searchFocusToken &+= 1
+    }
+
+    /// Opens a random card's detail view (start screen's "Random card" button).
+    func openRandomCard() {
+        guard let id = (try? store?.randomCardId()) ?? nil else { return }
+        selectedRecent = nil
+        select(id, immediate: true)
+    }
+
+    /// Prefills the search with a set filter (start screen's set rows).
+    func searchSet(_ code: String) {
+        query = "set:\(code)"
+        focusSearchField()
     }
 
     /// Back to the start screen: no query, results or selection.

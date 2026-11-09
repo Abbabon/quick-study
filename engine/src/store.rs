@@ -67,6 +67,18 @@ pub struct ArtworkRow {
     pub set_code: Option<String>,
 }
 
+/// A set for the start screen's "new sets" strip.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct SetRow {
+    pub code: String,
+    pub name: String,
+    /// "YYYY-MM-DD"
+    pub released_at: String,
+    pub set_type: Option<String>,
+    pub icon_svg_uri: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct ListSummary {
@@ -124,6 +136,26 @@ pub fn artworks(c: &Connection) -> Result<Vec<ArtworkRow>> {
         art_crop_url: r.get(4)?, colors: arr(r.get(5)?), set_code: r.get(6)?,
     }))?;
     Ok(rows.collect::<std::result::Result<_, _>>()?)
+}
+
+/// Most recently released main-line sets (expansions, core, masters, commander, draft
+/// innovations, funny), newest first, including ones releasing within `preview_days` from now.
+/// Empty until a `--printings` refresh has filled `sets`.
+pub fn recent_sets(c: &Connection, limit: u32, preview_days: u32) -> Result<Vec<SetRow>> {
+    let mut st = c.prepare_cached(
+        "SELECT code, name, released_at, set_type, icon_svg_uri FROM sets
+         WHERE released_at IS NOT NULL AND released_at <= ?
+           AND set_type IN ('expansion','core','masters','commander','draft_innovation','funny')
+         ORDER BY released_at DESC, name ASC LIMIT ?")?;
+    let rows = st.query_map(params![crate::today_plus_days(preview_days), limit], |r| Ok(SetRow {
+        code: r.get(0)?, name: r.get(1)?, released_at: r.get(2)?, set_type: r.get(3)?, icon_svg_uri: r.get(4)?,
+    }))?;
+    Ok(rows.collect::<std::result::Result<_, _>>()?)
+}
+
+/// A uniformly random card id, `None` when the DB has no cards.
+pub fn random_card_id(c: &Connection) -> Result<Option<String>> {
+    Ok(c.query_row("SELECT id FROM cards ORDER BY RANDOM() LIMIT 1", [], |r| r.get(0)).optional()?)
 }
 
 pub fn count(c: &Connection, table: &str) -> Result<u32> {

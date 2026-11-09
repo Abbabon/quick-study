@@ -369,18 +369,7 @@ struct SearchPanel: View {
         }
     }
 
-    private var placeholderHint: some View {
-        let scale = UIScale(value: uiScaleValue)
-        return VStack(spacing: scale.pad(8)) {
-            Text("Type a card name")
-                .font(scale.font(17))
-                .foregroundStyle(.secondary)
-            Text("\(model.totalCards) cards • ↑↓ to navigate • Esc to close")
-                .font(scale.font(11))
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
+    private var placeholderHint: some View { StartScreen(model: model) }
 
     private func handleEnter() {
         guard let card = model.selectedCard else { return }

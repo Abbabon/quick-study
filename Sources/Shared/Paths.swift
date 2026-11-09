@@ -45,6 +45,13 @@ public enum Paths {
         return dir
     }
 
+    /// Downloaded set-symbol SVGs (`<code>.svg`), written and read by the app only.
+    public static var setIconsDir: URL {
+        let dir = supportDir.appendingPathComponent("set-icons", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     public static var databaseURL: URL {
         supportDir.appendingPathComponent("cards.sqlite", isDirectory: false)
     }
