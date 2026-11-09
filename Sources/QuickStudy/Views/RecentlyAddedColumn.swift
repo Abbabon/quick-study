@@ -32,7 +32,7 @@ struct RecentlyAddedColumn: View, Equatable {
                             isNew: model.isNew(recent),
                             selected: recent.id == highlightedID
                         ) {
-                            model.selectRecent(recent)
+                            if recent.id == highlightedID { model.goHome() } else { model.selectRecent(recent) }
                         }
                     }
                 }

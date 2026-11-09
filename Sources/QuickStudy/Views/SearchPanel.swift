@@ -122,6 +122,17 @@ struct SearchPanel: View {
                 .help(model.listsColumnVisible ? "Hide Lists" : "Show Lists")
             }
             Button {
+                model.goHome()
+            } label: {
+                Image(systemName: "house")
+                    .font(scale.font(18))
+                    .foregroundStyle(.secondary)
+                    .frame(width: scale.size(30), height: scale.size(30))
+                    .contentShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
+            }
+            .buttonStyle(.plain)
+            .help("Home")
+            Button {
                 model.onOpenGame?()
             } label: {
                 Image(systemName: "gamecontroller")

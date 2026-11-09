@@ -290,6 +290,15 @@ final class AppModel: ObservableObject {
         searchFocusToken &+= 1
     }
 
+    /// Back to the start screen: no query, results or selection.
+    func goHome() {
+        query = ""
+        results = []
+        totalMatchCount = 0
+        deselect()
+        focusSearchField()
+    }
+
     func deselect() {
         zoom = nil
         selectedID = nil

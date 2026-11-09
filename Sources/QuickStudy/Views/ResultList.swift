@@ -19,6 +19,8 @@ struct ResultList: View {
                             let mini = model.results[i]
                             Row(model: model, mini: mini, selected: mini.id == model.selectedID,
                                 scaleValue: uiScaleValue) {
+                                // Clicking the already-selected card returns to the start screen.
+                                if mini.id == model.selectedID { model.goHome(); return }
                                 model.select(mini.id, immediate: true)
                                 // Clicking a row pulls focus off the search field; restore it so
                                 // ↑↓ keep navigating the list after a card is picked.
