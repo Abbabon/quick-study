@@ -74,8 +74,8 @@ cargo run --manifest-path engine/Cargo.toml --release -- --no-images --printings
 # so MTG_FETCHER_PATH must point at the built binary or it won't find it.
 MTG_FETCHER_PATH="$PWD/engine/target/release/mtg-fetcher" swift run QuickStudy   # GUI tests: use build-app.sh (swift run QuickStudy crashes without a bundle)
 
-# Regenerate the app icon (needs Python 3 + Pillow)
-python3 scripts/generate-icon.py
+# App icon: Resources/AppIcon-1024.png is the source; Resources/AppIcon.icns is built from it
+# (sips resizes -> iconutil -c icns) and committed. No build step regenerates it.
 ```
 
 `swift build` may pull `KeyboardShortcuts` from SPM (the only Swift package dependency) on first run (needs network). Minimum target is macOS 14.

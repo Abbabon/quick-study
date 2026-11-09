@@ -32,7 +32,7 @@ cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
     cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 else
-    echo "    (note: Resources/AppIcon.icns not found — bundling without an icon. Run scripts/generate-icon.py)"
+    echo "    (note: Resources/AppIcon.icns not found — bundling without an icon.)"
 fi
 
 # Ad-hoc sign so the system trusts it locally.

@@ -81,7 +81,7 @@ cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
     cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 else
-    echo "    (note: Resources/AppIcon.icns not found — run scripts/generate-icon.py)"
+    echo "    (note: Resources/AppIcon.icns not found)"
 fi
 
 APP_ENTITLEMENTS="$ROOT/Resources/QuickStudy.entitlements"
