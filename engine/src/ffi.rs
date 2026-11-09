@@ -97,6 +97,9 @@ impl Database {
     pub fn recent_sets(&self, limit: u32, preview_days: u32) -> Result<Vec<SetRow>, EngineError> {
         store::recent_sets(&lock(&self.read), limit, preview_days).map_err(db_err)
     }
+    pub fn sets_by_release(&self, limit: u32, preview_days: u32) -> Result<Vec<SetRow>, EngineError> {
+        store::sets_by_release(&lock(&self.read), limit, preview_days).map_err(db_err)
+    }
     pub fn random_card_id(&self) -> Result<Option<String>, EngineError> { store::random_card_id(&lock(&self.read)).map_err(db_err) }
     pub fn artworks(&self) -> Result<Vec<ArtworkRow>, EngineError> { store::artworks(&lock(&self.read)).map_err(db_err) }
 

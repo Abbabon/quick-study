@@ -146,6 +146,9 @@ fn recent_sets_filters_orders_and_previews() {
     assert_eq!(r.iter().map(|s| s.code.as_str()).collect::<Vec<_>>(), ["soon", "new", "old"]);
     assert_eq!(r[0].icon_svg_uri.as_deref(), Some("https://x/soon.svg"));
     assert_eq!(store::recent_sets(&c, 1, 14).unwrap().len(), 1);
+    // The full list drops only tokens (and undated/far-future sets), keeping other types.
+    let all = store::sets_by_release(&c, 100, 14).unwrap();
+    assert_eq!(all.iter().map(|s| s.code.as_str()).collect::<Vec<_>>(), ["soon", "new", "old"]);
 }
 
 #[test]

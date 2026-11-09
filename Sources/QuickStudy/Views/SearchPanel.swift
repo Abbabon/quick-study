@@ -20,6 +20,7 @@ struct SearchPanel: View {
             HStack(spacing: 0) {
                 if model.showsRecentColumn && model.recentlyAddedExpanded {
                     RecentlyAddedColumn(model: model, recents: model.recentlyAdded,
+                                        sets: model.recentColumnShowsSets ? model.allSets : nil,
                                         highlightedID: highlighted(in: model.recentlyAdded.map(\.id)))
                         .equatable()
                         .transition(.move(edge: .leading).combined(with: .opacity))

@@ -56,6 +56,9 @@ final class AppModel: ObservableObject {
     @Published var artworkCount: Int = 0
     /// Newest main-line sets for the start screen; empty until a `--printings` refresh.
     @Published var recentSets: [SetRow] = []
+    /// Left column shows sets by release date instead of recently added cards.
+    @Published var recentColumnShowsSets = false
+    @Published var allSets: [SetRow] = []
     @Published var artCacheSizeFormatted: String = "—"
     /// Number of brand-new cards ingested in the background whose images are not yet
     /// downloaded. Drives the menu-bar dot, dropdown item, and notification.
@@ -292,6 +295,23 @@ final class AppModel: ObservableObject {
     /// Requests that the search field take keyboard focus on the next runloop tick.
     func focusSearchField() {
         searchFocusToken &+= 1
+    }
+
+    /// Flips the left column between recent cards and sets by release date. Stays on cards when
+    /// the sets table is empty (no `--printings` refresh yet).
+    func toggleRecentColumnSets() {
+        if recentColumnShowsSets { recentColumnShowsSets = false; return }
+        guard let store = store else { return }
+        Task { [weak self] in
+            let sets = await Self.loadAllSets(store: store)
+            guard let self, !sets.isEmpty else { return }
+            self.allSets = sets
+            self.recentColumnShowsSets = true
+        }
+    }
+
+    private nonisolated static func loadAllSets(store: Database) async -> [SetRow] {
+        (try? store.setsByRelease(limit: 1000, previewDays: 14)) ?? []
     }
 
     /// Opens a random card's detail view (start screen's "Random card" button).

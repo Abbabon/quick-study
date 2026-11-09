@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import EngineBindings
 import Shared
 
 /// Collapsible left column listing the most recently ingested cards.
@@ -11,11 +12,13 @@ import Shared
 struct RecentlyAddedColumn: View, Equatable {
     let model: AppModel
     let recents: [Card.Recent]
+    /// When non-nil, the column lists these sets (newest first) instead of the recent cards.
+    let sets: [SetRow]?
     /// The selected card's id when it is one of `recents` (else nil).
     let highlightedID: String?
 
     static func == (a: Self, b: Self) -> Bool {
-        a.recents == b.recents && a.highlightedID == b.highlightedID
+        a.recents == b.recents && a.sets == b.sets && a.highlightedID == b.highlightedID
     }
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
 
@@ -26,6 +29,9 @@ struct RecentlyAddedColumn: View, Equatable {
             Divider().opacity(0.5)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: scale.pad(1)) {
+                    if let sets {
+                        ForEach(sets, id: \.code) { s in SetListRow(info: s) { model.searchSet(s.code) } }
+                    } else {
                     ForEach(recents) { recent in
                         RecentRow(
                             recent: recent,
@@ -34,6 +40,7 @@ struct RecentlyAddedColumn: View, Equatable {
                         ) {
                             if recent.id == highlightedID { model.goHome() } else { model.selectRecent(recent) }
                         }
+                    }
                     }
                 }
                 .padding(.horizontal, scale.pad(6))
@@ -49,16 +56,22 @@ struct RecentlyAddedColumn: View, Equatable {
             Image(systemName: "clock")
                 .font(scale.font(15))
                 .foregroundStyle(.secondary)
-            Text("Recently Added")
+            Text(sets == nil ? "Recently Added" : "Sets")
                 .font(scale.font(13, weight: .semibold))
             let newCount = recents.filter(model.isNew).count
-            if newCount > 0 {
-                Text("\(newCount) New")
-                    .font(scale.font(11, weight: .semibold))
-                    .foregroundStyle(DS.accent)
-                    .padding(.horizontal, scale.pad(8))
-                    .padding(.vertical, scale.pad(2))
-                    .background(Capsule().fill(DS.selection))
+            // The badge doubles as the switch: cards -> sets, and (as "Recent") back again.
+            // Without any sets data (no --printings refresh) it stays a plain, inert badge.
+            if sets != nil || newCount > 0 {
+                Button { model.toggleRecentColumnSets() } label: {
+                    Text(sets != nil ? "‹ Recent" : "\(newCount) New")
+                        .font(scale.font(11, weight: .semibold))
+                        .foregroundStyle(DS.accent)
+                        .padding(.horizontal, scale.pad(8))
+                        .padding(.vertical, scale.pad(2))
+                        .background(Capsule().fill(DS.selection))
+                }
+                .buttonStyle(.plain)
+                .help(sets != nil ? "Back to recently added cards" : "Browse sets by release date")
             }
             Spacer(minLength: 0)
         }
@@ -120,5 +133,36 @@ private struct RecentRow: View {
         .font(scale.font(11))
         .lineLimit(1)
         .truncationMode(.tail)
+    }
+}
+
+/// One set in the column's "Sets" view: symbol, name and release date. Click runs `set:<code>`.
+private struct SetListRow: View {
+    let info: SetRow
+    let onTap: () -> Void
+    @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
+    @State private var hovering = false
+
+    var body: some View {
+        let scale = UIScale(value: uiScaleValue)
+        HStack(spacing: scale.pad(8)) {
+            SetIconView(code: info.code, urlString: info.iconSvgUri)
+                .frame(width: scale.size(18), height: scale.size(18))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: scale.pad(2)) {
+                Text(info.name).font(scale.font(13)).lineLimit(1).truncationMode(.tail)
+                Text(info.releasedAt).font(scale.font(11)).foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, scale.pad(8))
+        .padding(.vertical, scale.pad(4))
+        .background(RoundedRectangle(cornerRadius: DS.Radius.sm)
+            .fill(hovering ? Color.primary.opacity(0.045) : .clear))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
+        .onHover { hovering = $0 }
+        .animation(DS.Motion.selectScroll, value: hovering)
+        .help("Search set:\(info.code)")
     }
 }

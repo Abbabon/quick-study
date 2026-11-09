@@ -153,6 +153,20 @@ pub fn recent_sets(c: &Connection, limit: u32, preview_days: u32) -> Result<Vec<
     Ok(rows.collect::<std::result::Result<_, _>>()?)
 }
 
+/// Every released set (plus those within `preview_days`), newest first, minus tokens,
+/// memorabilia and minigames, for the left column's "Sets" view.
+pub fn sets_by_release(c: &Connection, limit: u32, preview_days: u32) -> Result<Vec<SetRow>> {
+    let mut st = c.prepare_cached(
+        "SELECT code, name, released_at, set_type, icon_svg_uri FROM sets
+         WHERE released_at IS NOT NULL AND released_at <= ?
+           AND COALESCE(set_type, '') NOT IN ('token','memorabilia','minigame')
+         ORDER BY released_at DESC, name ASC LIMIT ?")?;
+    let rows = st.query_map(params![crate::today_plus_days(preview_days), limit], |r| Ok(SetRow {
+        code: r.get(0)?, name: r.get(1)?, released_at: r.get(2)?, set_type: r.get(3)?, icon_svg_uri: r.get(4)?,
+    }))?;
+    Ok(rows.collect::<std::result::Result<_, _>>()?)
+}
+
 /// A uniformly random card id, `None` when the DB has no cards.
 pub fn random_card_id(c: &Connection) -> Result<Option<String>> {
     Ok(c.query_row("SELECT id FROM cards ORDER BY RANDOM() LIMIT 1", [], |r| r.get(0)).optional()?)
