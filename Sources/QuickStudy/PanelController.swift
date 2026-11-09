@@ -154,6 +154,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.hasShadow = true
+        panel.acceptsMouseMovedEvents = true
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.delegate = self
