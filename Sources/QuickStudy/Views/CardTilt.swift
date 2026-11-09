@@ -86,10 +86,22 @@ struct CardZoom: Equatable {
     let back: Bool
 }
 
-/// Full-panel zoomed card over a darkened backdrop. Any click (or Esc, handled by the panel) dismisses.
+/// Zoom size setting: percent of the screen's visible height the zoomed card occupies.
+enum CardZoomSetting {
+    static let storageKey = "zoomHeightPercent"
+    static let defaultPercent: Double = 85
+    static let range: ClosedRange<Double> = 40 ... 100
+    static var percent: Double {
+        let v = UserDefaults.standard.object(forKey: storageKey) as? Double ?? defaultPercent
+        return min(max(v, range.lowerBound), range.upperBound)
+    }
+}
+
+/// Content of the screen-sized zoom window: darkened backdrop plus the card. Any click dismisses.
 struct CardZoomOverlay: View {
     let zoom: CardZoom
     let identity: ColorIdentity
+    let cardSize: CGSize
     var onDismiss: () -> Void
     @State private var shown = false
 
@@ -102,7 +114,7 @@ struct CardZoomOverlay: View {
                 identity: identity
             )
             .cardTilt()
-            .padding(24)
+            .frame(width: cardSize.width, height: cardSize.height)
             .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
             .scaleEffect(shown ? 1 : 0.85)
         }

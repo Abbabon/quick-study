@@ -221,6 +221,7 @@ struct SettingsView: View {
     @AppStorage(ClearSearchTimeout.storageKey) private var clearSearchTimeoutSeconds: Double = ClearSearchTimeout.defaultValue
     @AppStorage("appUpdateAutoCheck") private var appUpdateAutoCheck: Bool = true
     @AppStorage("showRecentlyAdded") private var showRecentlyAdded: Bool = true
+    @AppStorage(CardZoomSetting.storageKey) private var zoomPercent: Double = CardZoomSetting.defaultPercent
     @AppStorage("showMTGOPrintings") private var showMTGOPrintings: Bool = true
     @AppStorage("showArenaPrintings") private var showArenaPrintings: Bool = true
     @AppStorage(Appearance.storageKey) private var appearanceRaw: String = Appearance.defaultValue.rawValue
@@ -393,6 +394,18 @@ struct SettingsView: View {
                 SettingsRow(symbol: "clock.arrow.circlepath", style: TileStyle(0x5B6BE0, 0x7A45B6),
                             label: "Show recently added cards") {
                     Toggle("", isOn: $showRecentlyAdded).labelsHidden().toggleStyle(.switch)
+                }
+                SettingsRow(symbol: "plus.magnifyingglass", style: TileStyle(0x30C0C8, 0x1E9AA6),
+                            label: "Card zoom size") {
+                    HStack(spacing: 10) {
+                        Slider(value: $zoomPercent, in: CardZoomSetting.range, step: 5)
+                            .frame(width: 150)
+                        Text("\(Int(zoomPercent))%")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                            .frame(width: 42, alignment: .trailing)
+                    }
                 }
                 SettingsRow(symbol: "o.circle.fill", style: TileStyle(0x3E9BFF, 0x1E6FE0),
                             label: "Show MTGO printings") {

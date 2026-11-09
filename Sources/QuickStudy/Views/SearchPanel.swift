@@ -55,12 +55,6 @@ struct SearchPanel: View {
         // Re-focus whenever the panel re-shows or a card is picked so the search field stays
         // highlighted and ↑↓ keep navigating the results.
         .onChange(of: model.searchFocusToken) { searchFocused = true }
-        .overlay {
-            if let zoom = model.zoom, let card = model.selectedCard, card.id == zoom.id {
-                CardZoomOverlay(zoom: zoom, identity: card.identity) { dismissZoom() }
-                    .transition(.opacity)
-            }
-        }
         // Esc closes the zoomed card first; a second Esc closes the panel.
         .onExitCommand { if model.zoom != nil { dismissZoom() } else { onDismiss() } }
     }
