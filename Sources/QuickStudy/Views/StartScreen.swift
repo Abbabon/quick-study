@@ -83,11 +83,11 @@ private struct SetRowView: View {
             Text(upcoming ? "SOON" : "NEW")
                 .font(scale.font(10, weight: .bold))
                 .foregroundStyle(.white)
-                .padding(.horizontal, scale.pad(7))
+                .frame(width: scale.size(42))   // fixed so NEW/SOON pills (and the names after them) line up
                 .padding(.vertical, scale.pad(2))
                 .background(Capsule().fill(tint))
             SetIconView(code: info.code, urlString: info.iconSvgUri)
-                .frame(width: scale.size(16), height: scale.size(16))
+                .frame(width: scale.size(18), height: scale.size(18))   // symbols vary in aspect; fit inside a fixed box
                 .foregroundStyle(.secondary)
             Text(info.name)
                 .font(scale.font(13))
@@ -106,7 +106,7 @@ private struct SetRowView: View {
 
 /// A set symbol: the SVG is downloaded once into `Paths.setIconsDir`, then rendered as a template
 /// image (Scryfall's symbols are plain black, so it takes the foreground color).
-private struct SetIconView: View {
+struct SetIconView: View {
     let code: String
     let urlString: String?
     @State private var image: NSImage?
@@ -119,6 +119,7 @@ private struct SetIconView: View {
                 Color.clear
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: code) { image = await SetIconCache.image(code: code, urlString: urlString) }
     }
 }
