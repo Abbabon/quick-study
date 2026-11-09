@@ -1,6 +1,6 @@
 //! App-facing reads and card-list edits (ports of the Swift `CardStore*Tests`).
-use engine::scryfall::{Artwork, Card, Printing};
-use engine::{db, store, today_minus_days};
+use engine::scryfall::{Artwork, Card, Printing, SetInfo};
+use engine::{db, store, today_minus_days, today_plus_days};
 
 fn open() -> (tempfile::TempDir, rusqlite::Connection) {
     let d = tempfile::tempdir().unwrap();
@@ -129,4 +129,32 @@ fn list_items_skip_cards_missing_from_cards() {
 
 fn items(c: &rusqlite::Connection, l: &str) -> Vec<String> {
     store::list_items(c, l).unwrap().into_iter().map(|h| h.id).collect()
+}
+
+#[test]
+fn recent_sets_filters_orders_and_previews() {
+    let (_d, mut c) = open();
+    assert!(store::recent_sets(&c, 5, 14).unwrap().is_empty());
+    let set = |code: &str, ty: &str, released: Option<String>| SetInfo { code: code.into(), name: format!("{code} name"),
+        released_at: released, set_type: Some(ty.into()), card_count: Some(1), icon_svg_uri: Some(format!("https://x/{code}.svg")) };
+    db::upsert_sets(&mut c, &[
+        set("old", "expansion", Some("2020-01-01".into())), set("new", "commander", Some(today_minus_days(3))),
+        set("soon", "expansion", Some(today_plus_days(7))), set("far", "expansion", Some(today_plus_days(60))),
+        set("tok", "token", Some(today_minus_days(1))), set("nodate", "expansion", None),
+    ]).unwrap();
+    let r = store::recent_sets(&c, 5, 14).unwrap();
+    assert_eq!(r.iter().map(|s| s.code.as_str()).collect::<Vec<_>>(), ["soon", "new", "old"]);
+    assert_eq!(r[0].icon_svg_uri.as_deref(), Some("https://x/soon.svg"));
+    assert_eq!(store::recent_sets(&c, 1, 14).unwrap().len(), 1);
+    // The full list drops only tokens (and undated/far-future sets), keeping other types.
+    let all = store::sets_by_release(&c, 100, 14).unwrap();
+    assert_eq!(all.iter().map(|s| s.code.as_str()).collect::<Vec<_>>(), ["soon", "new", "old"]);
+}
+
+#[test]
+fn random_card_id_none_then_some() {
+    let (_d, mut c) = open();
+    assert_eq!(store::random_card_id(&c).unwrap(), None);
+    db::upsert_cards(&mut c, &[card("a", "Alpha", None)]).unwrap();
+    assert_eq!(store::random_card_id(&c).unwrap().as_deref(), Some("a"));
 }

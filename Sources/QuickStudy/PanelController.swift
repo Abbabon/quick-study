@@ -8,6 +8,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var panelScale: Double = UIScale.defaultValue
     private var lastHiddenAt: Date?
     private let model: AppModel
+    private var zoomWindow: ZoomWindowController?
 
     /// Set while a floating companion window (the hovering Settings window) is open, so the
     /// panel does not auto-dismiss when that window takes key focus — the two hover together.
@@ -17,6 +18,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     init(model: AppModel) {
         self.model = model
         super.init()
+        zoomWindow = ZoomWindowController(model: model) { [weak self] in self?.panel }
         model.onPinnedChange = { [weak self] in self?.adjustPanelForPins() }
         model.onListsColumnChange = { [weak self] in self?.adjustPanelWidth() }
         model.onRecentColumnChange = { [weak self] in self?.adjustPanelWidth() }
@@ -105,6 +107,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             panelScale = currentScale
         }
         guard let panel = panel else { return }
+        model.zoom = nil
         clearSearchIfTimedOut()
         centerOnActiveScreen(panel)
         // Activate FIRST, then order the panel key/front LAST. As a `.regular` Dock app,
@@ -123,6 +126,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func hide() {
+        model.zoom = nil
         panel?.orderOut(nil)
         lastHiddenAt = Date()
     }
@@ -154,6 +158,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.hasShadow = true
+        panel.acceptsMouseMovedEvents = true
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.delegate = self

@@ -247,7 +247,7 @@ private struct ListCardRow: View {
                       : (hovering ? Color.primary.opacity(0.045) : .clear))
         )
         .contentShape(Rectangle())
-        .onTapGesture { model.select(mini.id) }
+        .onTapGesture { selected ? model.goHome() : model.select(mini.id) }
         .onHover { hovering = $0 }
         .contextMenu {
             Button("Remove from list", role: .destructive) {

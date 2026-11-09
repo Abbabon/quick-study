@@ -20,6 +20,7 @@ struct SearchPanel: View {
             HStack(spacing: 0) {
                 if model.showsRecentColumn && model.recentlyAddedExpanded {
                     RecentlyAddedColumn(model: model, recents: model.recentlyAdded,
+                                        sets: model.recentColumnShowsSets ? model.allSets : nil,
                                         highlightedID: highlighted(in: model.recentlyAdded.map(\.id)))
                         .equatable()
                         .transition(.move(edge: .leading).combined(with: .opacity))
@@ -55,7 +56,13 @@ struct SearchPanel: View {
         // Re-focus whenever the panel re-shows or a card is picked so the search field stays
         // highlighted and ↑↓ keep navigating the results.
         .onChange(of: model.searchFocusToken) { searchFocused = true }
-        .onExitCommand(perform: onDismiss)
+        // Esc closes the zoomed card first; a second Esc closes the panel.
+        .onExitCommand { if model.zoom != nil { dismissZoom() } else { onDismiss() } }
+    }
+
+    private func dismissZoom() {
+        withAnimation(reduceMotion ? nil : DS.Motion.resize) { model.zoom = nil }
+        model.focusSearchField()
     }
 
     /// The selected card's id if it is in `ids`, so a side column only re-renders when its own
@@ -109,6 +116,17 @@ struct SearchPanel: View {
                 .buttonStyle(.plain)
                 .help(model.listsColumnVisible ? "Hide Lists" : "Show Lists")
             }
+            Button {
+                model.goHome()
+            } label: {
+                Image(systemName: "house")
+                    .font(scale.font(18))
+                    .foregroundStyle(.secondary)
+                    .frame(width: scale.size(30), height: scale.size(30))
+                    .contentShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
+            }
+            .buttonStyle(.plain)
+            .help("Home")
             Button {
                 model.onOpenGame?()
             } label: {
@@ -194,6 +212,9 @@ struct SearchPanel: View {
                 printings: model.selectedPrintings,
                 onPrintingTap: { printing in
                     if let url = printing.scryfallURL { NSWorkspace.shared.open(url) }
+                },
+                onZoom: { back in
+                    if let id = model.selectedCard?.id { model.zoom = CardZoom(id: id, back: back) }
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -343,18 +364,7 @@ struct SearchPanel: View {
         }
     }
 
-    private var placeholderHint: some View {
-        let scale = UIScale(value: uiScaleValue)
-        return VStack(spacing: scale.pad(8)) {
-            Text("Type a card name")
-                .font(scale.font(17))
-                .foregroundStyle(.secondary)
-            Text("\(model.totalCards) cards • ↑↓ to navigate • Esc to close")
-                .font(scale.font(11))
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
+    private var placeholderHint: some View { StartScreen(model: model) }
 
     private func handleEnter() {
         guard let card = model.selectedCard else { return }

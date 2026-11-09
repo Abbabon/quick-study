@@ -32,6 +32,13 @@ pub fn today_minus_days(days: u32) -> String {
         .unwrap()
 }
 
+/// UTC "YYYY-MM-DD", `days` days after now.
+pub fn today_plus_days(days: u32) -> String {
+    (time::OffsetDateTime::now_utc() + time::Duration::days(days as i64))
+        .format(time::macros::format_description!("[year]-[month]-[day]"))
+        .unwrap()
+}
+
 /// Is `s` a well-formed "YYYY-MM-DD" day?
 pub fn valid_day(s: &str) -> bool {
     time::Date::parse(s, time::macros::format_description!("[year]-[month]-[day]")).is_ok()
