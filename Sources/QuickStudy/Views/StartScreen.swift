@@ -145,29 +145,36 @@ enum SetIconCache {
     }
 }
 
-/// Wordmark at the top of the start screen: outlined rounded-rect glyph with a dot near its
-/// top-right corner, then "Quick Study" in semibold SF Pro Display. Native shapes so it stays
-/// crisp, follows UIScale and uses the primary foreground color in dark and light appearance.
+/// Wordmark image (Resources/HeaderWordmark.png, copied into Contents/Resources by build-app.sh,
+/// trimmed to the artwork). Bone-white art: used as-is in dark appearance, tinted `.primary`
+/// (template) in light so it doesn't vanish. Falls back to text when the bundle lacks it (swift test).
 struct AppTitleHeader: View {
     let scale: UIScale
+    @Environment(\.colorScheme) private var colorScheme
+
+    // Trimmed image is 1346x268 px; the "QUICK STUDY" lettering spans x 315...1337, so its center
+    // (826) sits 153 px right of the image center (673). Shift left by that share of the width
+    // so the lettering, not glyph+text, is centered over the column below.
+    private static let imageAspect: CGFloat = 1346.0 / 268.0
+    private static let letteringOffsetFraction: CGFloat = 153.0 / 1346.0
+
+    private static let image: NSImage? = Bundle.main.url(forResource: "HeaderWordmark", withExtension: "png")
+        .flatMap { NSImage(contentsOf: $0) }
 
     var body: some View {
-        HStack(spacing: scale.pad(10)) {
-            let h = scale.size(20), w = scale.size(28)
-            ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: h * 0.28, style: .continuous)
-                    .strokeBorder(lineWidth: scale.size(2.2))
-                Circle()
-                    .frame(width: h * 0.2, height: h * 0.2)
-                    .padding(.top, h * 0.2)
-                    .padding(.trailing, h * 0.2)
+        Group {
+            if let img = Self.image {
+                let h = scale.size(44), w = h * Self.imageAspect
+                Image(nsImage: img)
+                    .renderingMode(colorScheme == .dark ? .original : .template)
+                    .resizable()
+                    .frame(width: w, height: h)
+                    .offset(x: -w * Self.letteringOffsetFraction)
+                    .foregroundStyle(.primary)
+            } else {
+                Text("Quick Study").font(scale.font(28, weight: .semibold)).lineLimit(1)
             }
-            .frame(width: w, height: h)
-            Text("Quick Study")
-                .font(scale.font(28, weight: .semibold))
-                .lineLimit(1)
         }
-        .foregroundStyle(.primary)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Quick Study")
     }

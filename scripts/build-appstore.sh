@@ -78,6 +78,8 @@ cp "$BIN_DIR/QuickStudy"   "$APP/Contents/MacOS/QuickStudy"
 cp "$FETCHER"              "$APP/Contents/MacOS/mtg-fetcher"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
+cp "$ROOT/Resources/HeaderWordmark.png" "$APP/Contents/Resources/HeaderWordmark.png"
+
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
     cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 else
