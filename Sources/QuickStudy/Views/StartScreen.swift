@@ -145,14 +145,30 @@ enum SetIconCache {
     }
 }
 
-/// App name at the top of the start screen. Plain text for now; swap the body for a wordmark
-/// image when the header design lands.
+/// Wordmark at the top of the start screen: outlined rounded-rect glyph with a dot near its
+/// top-right corner, then "Quick Study" in semibold SF Pro Display. Native shapes so it stays
+/// crisp, follows UIScale and uses the primary foreground color in dark and light appearance.
 struct AppTitleHeader: View {
     let scale: UIScale
 
     var body: some View {
-        Text("Quick Study")
-            .font(scale.font(28, weight: .bold))
-            .lineLimit(1)
+        HStack(spacing: scale.pad(10)) {
+            let h = scale.size(20), w = scale.size(28)
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: h * 0.28, style: .continuous)
+                    .strokeBorder(lineWidth: scale.size(2.2))
+                Circle()
+                    .frame(width: h * 0.2, height: h * 0.2)
+                    .padding(.top, h * 0.2)
+                    .padding(.trailing, h * 0.2)
+            }
+            .frame(width: w, height: h)
+            Text("Quick Study")
+                .font(scale.font(28, weight: .semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.primary)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Quick Study")
     }
 }
