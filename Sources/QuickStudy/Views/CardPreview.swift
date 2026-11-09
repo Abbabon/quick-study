@@ -16,6 +16,8 @@ struct CardPreview: View {
     var printings: [Card.Printing] = []
     /// Called when the user taps a printing — opens that exact printing on Scryfall.
     var onPrintingTap: (Card.Printing) -> Void = { _ in }
+    /// Called when the card image is clicked; `back` is true while the back face is shown.
+    var onZoom: (_ back: Bool) -> Void = { _ in }
     @AppStorage(UIScale.storageKey) private var uiScaleValue: Double = UIScale.defaultValue
     @AppStorage("showMTGOPrintings") private var showMTGOPrintings: Bool = true
     @AppStorage("showArenaPrintings") private var showArenaPrintings: Bool = true
@@ -56,9 +58,12 @@ struct CardPreview: View {
                                      : Paths.imageURL(forCardID: card.id),
                 identity: card.identity
             )
+            .cardTilt()
             .rotation3DEffect(.degrees(flipAngle), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
             .frame(maxWidth: 330, maxHeight: 480)
             .dsCardShadow()
+            .onTapGesture { onZoom(showingBack) }
+            .help("Click to zoom")
             VStack(alignment: .leading, spacing: scale.pad(8)) {
                 header(card: card, scale: scale)
                 if let type = card.typeLine {
@@ -257,7 +262,7 @@ struct CardPreview: View {
 /// previously-listed card shows instantly. On a miss it decodes off the main thread instead of
 /// blocking the preview's render (these JPEGs are ~100–300 KB and previously decoded
 /// synchronously inside `body` on every re-render).
-private struct CardImageView: View {
+struct CardImageView: View {
     let cacheKey: String
     let fileURL: URL
     let identity: ColorIdentity

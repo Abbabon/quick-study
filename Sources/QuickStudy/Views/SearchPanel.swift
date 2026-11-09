@@ -55,7 +55,19 @@ struct SearchPanel: View {
         // Re-focus whenever the panel re-shows or a card is picked so the search field stays
         // highlighted and ↑↓ keep navigating the results.
         .onChange(of: model.searchFocusToken) { searchFocused = true }
-        .onExitCommand(perform: onDismiss)
+        .overlay {
+            if let zoom = model.zoom, let card = model.selectedCard, card.id == zoom.id {
+                CardZoomOverlay(zoom: zoom, identity: card.identity) { dismissZoom() }
+                    .transition(.opacity)
+            }
+        }
+        // Esc closes the zoomed card first; a second Esc closes the panel.
+        .onExitCommand { if model.zoom != nil { dismissZoom() } else { onDismiss() } }
+    }
+
+    private func dismissZoom() {
+        withAnimation(reduceMotion ? nil : DS.Motion.resize) { model.zoom = nil }
+        model.focusSearchField()
     }
 
     /// The selected card's id if it is in `ids`, so a side column only re-renders when its own
@@ -194,6 +206,9 @@ struct SearchPanel: View {
                 printings: model.selectedPrintings,
                 onPrintingTap: { printing in
                     if let url = printing.scryfallURL { NSWorkspace.shared.open(url) }
+                },
+                onZoom: { back in
+                    if let id = model.selectedCard?.id { model.zoom = CardZoom(id: id, back: back) }
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)

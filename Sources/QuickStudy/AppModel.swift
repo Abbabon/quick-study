@@ -17,6 +17,8 @@ final class AppModel: ObservableObject {
     /// is what's shown, `totalMatchCount` is how many exist.
     @Published var totalMatchCount: Int = 0
     @Published var selectedID: String?
+    /// Card image shown zoomed over the panel (click the preview image; click/Esc to close).
+    @Published var zoom: CardZoom?
     @Published var selectedCard: Card?
     /// Printings of the selected card, for the preview's Printings list. Loaded lazily on
     /// selection from `Database.printings(oracleId:)`.
@@ -277,6 +279,7 @@ final class AppModel: ObservableObject {
     /// Clears all transient search UI state so the next show is a fresh session.
     func resetSearchState() {
         query = ""
+        zoom = nil
         selectedID = nil
         selectedCard = nil
         results = []
@@ -288,6 +291,7 @@ final class AppModel: ObservableObject {
     }
 
     func deselect() {
+        zoom = nil
         selectedID = nil
         selectedCard = nil
         selectedRecent = nil
@@ -309,6 +313,7 @@ final class AppModel: ObservableObject {
     /// detail is read off the keystroke path; pass `immediate` for a deliberate selection (a
     /// click) so it skips the coalescing delay that only exists to absorb fast typing.
     func select(_ id: String, immediate: Bool = false) {
+        if id != selectedID { zoom = nil }
         selectedID = id
         // Cached detail is in-memory and cheap — apply synchronously so the preview tracks fast.
         if let cached = detailCache.object(forKey: id as NSString) {
