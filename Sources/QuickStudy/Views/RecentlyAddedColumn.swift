@@ -52,17 +52,17 @@ struct RecentlyAddedColumn: View, Equatable {
     }
 
     private func header(scale: UIScale) -> some View {
-        HStack(spacing: scale.pad(6)) {
-            Image(systemName: "clock")
-                .font(scale.font(15))
-                .foregroundStyle(.secondary)
-            Text(sets == nil ? "Recently Added" : "Sets")
-                .font(scale.font(13, weight: .semibold))
-            let newCount = recents.filter(model.isNew).count
-            // The badge doubles as the switch: cards -> sets, and (as "Recent") back again.
-            // Without any sets data (no --printings refresh) it stays a plain, inert badge.
-            if sets != nil || newCount > 0 {
-                Button { model.toggleRecentColumnSets() } label: {
+        let newCount = recents.filter(model.isNew).count
+        // The whole row is the switch: cards <-> sets by release date. With no sets data
+        // (no --printings refresh yet) the toggle is a no-op and the column stays on cards.
+        return Button { model.toggleRecentColumnSets() } label: {
+            HStack(spacing: scale.pad(6)) {
+                Image(systemName: sets == nil ? "clock" : "calendar")
+                    .font(scale.font(15))
+                    .foregroundStyle(.secondary)
+                Text(sets == nil ? "Recently Added" : "Sets")
+                    .font(scale.font(13, weight: .semibold))
+                if sets != nil || newCount > 0 {
                     Text(sets != nil ? "‹ Recent" : "\(newCount) New")
                         .font(scale.font(11, weight: .semibold))
                         .foregroundStyle(DS.accent)
@@ -70,13 +70,14 @@ struct RecentlyAddedColumn: View, Equatable {
                         .padding(.vertical, scale.pad(2))
                         .background(Capsule().fill(DS.selection))
                 }
-                .buttonStyle(.plain)
-                .help(sets != nil ? "Back to recently added cards" : "Browse sets by release date")
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(EdgeInsets(top: scale.pad(10), leading: scale.pad(12),
+                                bottom: scale.pad(6), trailing: scale.pad(8)))
+            .contentShape(Rectangle())
         }
-        .padding(EdgeInsets(top: scale.pad(10), leading: scale.pad(12),
-                            bottom: scale.pad(6), trailing: scale.pad(8)))
+        .buttonStyle(.plain)
+        .help(sets != nil ? "Back to recently added cards" : "Browse sets by release date")
     }
 }
 
