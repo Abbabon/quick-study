@@ -80,6 +80,7 @@ cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
 cp "$ROOT/Resources/HeaderWordmark.png" "$APP/Contents/Resources/HeaderWordmark.png"
 cp "$ROOT/Resources/HeaderWordmark-Light.png" "$APP/Contents/Resources/HeaderWordmark-Light.png"
+cp "$ROOT/Resources/WhatsNew.md" "$APP/Contents/Resources/WhatsNew.md"
 
 "$ROOT/scripts/compile-icon.sh" "$APP/Contents/Resources"
 "$ROOT/scripts/compile-shaders.sh" "$APP/Contents/Resources"

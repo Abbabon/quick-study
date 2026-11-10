@@ -590,6 +590,14 @@ struct SettingsView: View {
             }
             .padding(.bottom, 10)
 
+            SettingsCard {
+                SettingsRow(symbol: "megaphone.fill", style: TileStyle(0xFF9F0A, 0xFF7A00),
+                            label: "What's New", last: true) {
+                    Button("Show…") { WhatsNewWindowController.shared.show() }
+                }
+            }
+            .padding(.bottom, 10)
+
             #if !APPSTORE
             SettingsCard {
                 SettingsRow(symbol: "arrow.triangle.2.circlepath", style: TileStyle(0x3E9BFF, 0x1E6FE0),

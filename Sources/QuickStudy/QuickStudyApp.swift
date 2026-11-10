@@ -118,6 +118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.panel.companionWindowActive = visible
         }
 
+        WhatsNewWindowController.shared.showIfPending()
+
         notifier.configure()
         notifier.onUpdateAction = { [weak self] in self?.model.startImageDownload() }
         notifier.onOpenPanel = { [weak self] in self?.panel.show() }
