@@ -10,14 +10,17 @@ struct CardTilt: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Cursor position normalised to -1...1 from the view's center; nil when not hovering.
     @State private var pointer: CGPoint?
+    @AppStorage(FoilStyle.storageKey) private var foilRaw = FoilStyle.none.rawValue
 
     func body(content: Content) -> some View {
         let p = pointer ?? .zero
         return content
+            .modifier(FoilEffect(style: FoilStyle(stored: foilRaw), pointer: p))
             .overlay(
-                RadialGradient(colors: [.white.opacity(pointer == nil ? 0 : 0.22), .clear],
-                               center: UnitPoint(x: 0.5 + p.x * 0.5, y: 0.5 + p.y * 0.5),
-                               startRadius: 0, endRadius: 220)
+                // Sized relative to the card so the sheen looks the same in the preview and the zoom.
+                EllipticalGradient(colors: [.white.opacity(pointer == nil ? 0 : 0.22), .clear],
+                                   center: UnitPoint(x: 0.5 + p.x * 0.5, y: 0.5 + p.y * 0.5),
+                                   startRadiusFraction: 0, endRadiusFraction: 0.65)
                     .blendMode(.softLight)
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                     .allowsHitTesting(false)

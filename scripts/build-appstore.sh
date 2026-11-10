@@ -82,6 +82,7 @@ cp "$ROOT/Resources/HeaderWordmark.png" "$APP/Contents/Resources/HeaderWordmark.
 cp "$ROOT/Resources/HeaderWordmark-Light.png" "$APP/Contents/Resources/HeaderWordmark-Light.png"
 
 "$ROOT/scripts/compile-icon.sh" "$APP/Contents/Resources"
+"$ROOT/scripts/compile-shaders.sh" "$APP/Contents/Resources"
 
 APP_ENTITLEMENTS="$ROOT/Resources/QuickStudy.entitlements"
 

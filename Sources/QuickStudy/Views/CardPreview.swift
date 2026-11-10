@@ -55,20 +55,24 @@ struct CardPreview: View {
     @ViewBuilder
     private func content(card: Card, scale: UIScale) -> some View {
         HStack(alignment: .top, spacing: scale.pad(16)) {
-            CardImageView(
-                cacheKey: hoveredPrinting?.id ?? (showingBack ? "\(card.id)_back" : card.id),
-                fileURL: hoveredPrinting.map { Paths.imageURL(forCardID: $0.id) }
-                    ?? (showingBack ? Paths.backImageURL(forCardID: card.id)
-                                    : Paths.imageURL(forCardID: card.id)),
-                remoteURL: hoveredPrinting.flatMap { Paths.remoteImageURL(forCardID: $0.id) },
-                identity: card.identity
-            )
-            .cardTilt()
-            .rotation3DEffect(.degrees(flipAngle), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
-            .frame(maxWidth: 330, maxHeight: 480)
-            .dsCardShadow()
-            .onTapGesture { onZoom(showingBack) }
-            .help("Click to zoom")
+            VStack(spacing: scale.pad(8)) {
+                CardImageView(
+                    cacheKey: hoveredPrinting?.id ?? (showingBack ? "\(card.id)_back" : card.id),
+                    fileURL: hoveredPrinting.map { Paths.imageURL(forCardID: $0.id) }
+                        ?? (showingBack ? Paths.backImageURL(forCardID: card.id)
+                                        : Paths.imageURL(forCardID: card.id)),
+                    remoteURL: hoveredPrinting.flatMap { Paths.remoteImageURL(forCardID: $0.id) },
+                    identity: card.identity
+                )
+                .cardTilt()
+                .rotation3DEffect(.degrees(flipAngle), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
+                .frame(maxWidth: 330, maxHeight: 480)
+                .dsCardShadow()
+                .onTapGesture { onZoom(showingBack) }
+                .help("Click to zoom")
+                FoilPicker().frame(maxWidth: 330)
+            }
+            .frame(maxWidth: 330)
             VStack(alignment: .leading, spacing: scale.pad(8)) {
                 header(card: card, scale: scale)
                 if let type = card.typeLine {
