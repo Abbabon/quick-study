@@ -8,13 +8,66 @@ extension KeyboardShortcuts.Name {
     static let openSearch = Self("openSearch", default: .init(.m, modifiers: [.option, .command]))
 }
 
+// AppKit entry point: a SwiftUI `App` needs a Scene, and the placeholder `Settings` scene made
+// SwiftUI open an empty "Quick Study Settings" window at launch. Settings, the panel and Play
+// are all owned by AppKit controllers, so no scene is needed — but we build the main menu
+// ourselves (Edit gives text fields their Cmd-C/V/A/Z).
 @main
-struct QuickStudyApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+@MainActor
+enum Main {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.mainMenu = mainMenu(delegate)
+        app.run()
+    }
 
-    // Placeholder Scene — the real settings window is owned by SettingsWindowController.
-    var body: some Scene {
-        Settings { EmptyView() }
+    private static func mainMenu(_ d: AppDelegate) -> NSMenu {
+        func item(_ title: String, _ action: Selector?, _ key: String = "",
+                  _ mods: NSEvent.ModifierFlags = .command, target: AnyObject? = nil) -> NSMenuItem {
+            let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            i.keyEquivalentModifierMask = mods
+            i.target = target
+            return i
+        }
+        func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
+            let m = NSMenu(title: title)
+            items.forEach(m.addItem)
+            let host = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            host.submenu = m
+            return host
+        }
+        let name = "Quick Study"
+        let main = NSMenu()
+        main.addItem(submenu(name, [
+            item("About \(name)", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            .separator(),
+            item("Settings…", #selector(AppDelegate.openSettings), ",", target: d),
+            .separator(),
+            item("Hide \(name)", #selector(NSApplication.hide(_:)), "h"),
+            item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+            item("Show All", #selector(NSApplication.unhideAllApplications(_:))),
+            .separator(),
+            item("Quit \(name)", #selector(NSApplication.terminate(_:)), "q"),
+        ]))
+        main.addItem(submenu("Edit", [
+            item("Undo", Selector(("undo:")), "z"),
+            item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+            .separator(),
+            item("Cut", #selector(NSText.cut(_:)), "x"),
+            item("Copy", #selector(NSText.copy(_:)), "c"),
+            item("Paste", #selector(NSText.paste(_:)), "v"),
+            item("Select All", #selector(NSText.selectAll(_:)), "a"),
+        ]))
+        let window = submenu("Window", [
+            item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+            item("Zoom", #selector(NSWindow.performZoom(_:))),
+            item("Close", #selector(NSWindow.performClose(_:)), "w"),
+        ])
+        main.addItem(window)
+        NSApp.windowsMenu = window.submenu
+        return main
     }
 }
 
@@ -226,7 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.installOrRelaunch()
     }
 
-    @objc private func openSettings() {
+    @objc func openSettings() {
         settingsWindow.show()
     }
 
