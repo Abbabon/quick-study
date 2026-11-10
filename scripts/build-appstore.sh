@@ -116,6 +116,11 @@ else
     echo "==> Ad-hoc mode: signing with '-' (sandbox still enforced locally)"
 fi
 
+# Strip quarantine (and any other xattrs) from the whole bundle: files copied from
+# ~/Downloads (the profile) carry com.apple.quarantine, which App Store Connect
+# rejects (91109). Must happen after all copies and before signing.
+xattr -cr "$APP"
+
 # Sign inside-out: the bundled helper first (with inherit entitlements), then the app.
 # The helper must carry ONLY app-sandbox + inherit — extra entitlements break
 # sandbox inheritance — so it never gets the identifier entitlements.
