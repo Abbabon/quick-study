@@ -44,6 +44,8 @@ struct FoilLayer<Source: View>: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        // Confine to the card art itself (its alpha), so no style can paint beyond the card's shape.
+        .mask(source)
         .allowsHitTesting(false)
     }
 
@@ -65,9 +67,9 @@ struct FoilLayer<Source: View>: View {
     private var etched: some View {
         let (s, e) = band(width: 0.6)
         // Linework/frame = the dark parts of the art: invert, boost contrast, use luminance as alpha.
-        let lines = source.colorInvert().brightness(-0.3).contrast(2.8).luminanceToAlpha()
+        let lines = source.colorInvert().brightness(-0.38).contrast(4).luminanceToAlpha()
         return ZStack {
-            Color.gray.opacity(0.22).blendMode(.saturation)
+            Color.gray.opacity(0.12).blendMode(.saturation)
             LinearGradient(colors: [Color(white: 0.55), .white, Color(white: 0.7), Color(white: 0.35), .white, Color(white: 0.55)],
                            startPoint: s, endPoint: e)
                 .mask(lines)
@@ -76,6 +78,9 @@ struct FoilLayer<Source: View>: View {
             LinearGradient(colors: [.clear, .white.opacity(0.22), .clear], startPoint: s, endPoint: e)
                 .blendMode(.softLight)
         }
+        // the card's black outer border would read as "linework"; keep the sheen inside it
+        .padding(cornerRadius * 0.35)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius * 0.7))
     }
 
     private var galaxy: some View {
