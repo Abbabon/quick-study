@@ -1,4 +1,4 @@
-version: 0.7.1
+version: 0.8.0
 
 - Foil styles on the card preview and zoom: Holo, Etched, Galaxy and Surge.
 - Search results now keep loading as you scroll, past the first 20.
