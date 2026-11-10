@@ -29,11 +29,10 @@ cp "$BIN_DIR/QuickStudy"   "$APP/Contents/MacOS/QuickStudy"
 cp "$FETCHER"              "$APP/Contents/MacOS/mtg-fetcher"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
-if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
-    cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-else
-    echo "    (note: Resources/AppIcon.icns not found — bundling without an icon. Run scripts/generate-icon.py)"
-fi
+cp "$ROOT/Resources/HeaderWordmark.png" "$APP/Contents/Resources/HeaderWordmark.png"
+cp "$ROOT/Resources/HeaderWordmark-Light.png" "$APP/Contents/Resources/HeaderWordmark-Light.png"
+
+"$ROOT/scripts/compile-icon.sh" "$APP/Contents/Resources"
 
 # Ad-hoc sign so the system trusts it locally.
 codesign --force --deep --sign - "$APP" >/dev/null

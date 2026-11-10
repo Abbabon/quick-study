@@ -74,8 +74,8 @@ cargo run --manifest-path engine/Cargo.toml --release -- --no-images --printings
 # so MTG_FETCHER_PATH must point at the built binary or it won't find it.
 MTG_FETCHER_PATH="$PWD/engine/target/release/mtg-fetcher" swift run QuickStudy   # GUI tests: use build-app.sh (swift run QuickStudy crashes without a bundle)
 
-# Regenerate the app icon (needs Python 3 + Pillow)
-python3 scripts/generate-icon.py
+# App icon: Resources/AppIcon.icon (Icon Composer, art in Assets/art.png) is compiled by actool
+# (scripts/compile-icon.sh, needs Xcode 26+) into Assets.car + fallback AppIcon.icns at build time.
 ```
 
 `swift build` may pull `KeyboardShortcuts` from SPM (the only Swift package dependency) on first run (needs network). Minimum target is macOS 14.
@@ -115,7 +115,7 @@ Rust owns it (`engine/src/db.rs` migrations + fetcher upserts, `engine/src/store
 
 ### Bundling
 
-`scripts/build-app.sh` first runs `scripts/build-engine.sh` (the single entry point, also called by `build-appstore.sh`, `install-local.sh` and `release.sh` via `build-app.sh`: UniFFI static lib → XCFramework + Swift bindings, plus `mtg-fetcher`; `cargo build --target aarch64-apple-darwin`, arm64-only, deployment target 14.0), then assembles the `.app` from `swift build` output plus the Rust fetcher: both binaries land in `Contents/MacOS/` (so the app finds `mtg-fetcher` next to itself without `MTG_FETCHER_PATH`), `Info.plist` and `AppIcon.icns` go to standard locations, then ad-hoc codesigned. Don't rely on Xcode project files — there are none.
+`scripts/build-app.sh` first runs `scripts/build-engine.sh` (the single entry point, also called by `build-appstore.sh`, `install-local.sh` and `release.sh` via `build-app.sh`: UniFFI static lib → XCFramework + Swift bindings, plus `mtg-fetcher`; `cargo build --target aarch64-apple-darwin`, arm64-only, deployment target 14.0), then assembles the `.app` from `swift build` output plus the Rust fetcher: both binaries land in `Contents/MacOS/` (so the app finds `mtg-fetcher` next to itself without `MTG_FETCHER_PATH`), `Info.plist` and the actool-compiled icon (`Assets.car` + `AppIcon.icns`) go to standard locations, then ad-hoc codesigned. Don't rely on Xcode project files — there are none.
 
 ## Reference docs
 

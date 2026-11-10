@@ -11,6 +11,7 @@ struct StartScreen: View {
     var body: some View {
         let scale = UIScale(value: uiScaleValue)
         return VStack(spacing: scale.pad(16)) {
+            AppTitleHeader(scale: scale)
             VStack(spacing: scale.pad(8)) {
                 Text("Type a card name")
                     .font(scale.font(17))
@@ -141,5 +142,46 @@ enum SetIconCache {
         img.isTemplate = true
         memory.setObject(img, forKey: code as NSString)
         return img
+    }
+}
+
+/// Wordmark image (Resources/HeaderWordmark.png for dark, HeaderWordmark-Light.png for light; copied
+/// into Contents/Resources by the build scripts, trimmed to the artwork). Falls back to text when the
+/// bundle lacks them (swift test).
+struct AppTitleHeader: View {
+    let scale: UIScale
+    @Environment(\.colorScheme) private var colorScheme
+
+    // Per variant: pixel size of the trimmed image and the x-center of the "QUICK STUDY" lettering
+    // (alpha column scan), so the lettering, not glyph+text, is centered over the column below.
+    private struct Variant {
+        let image: NSImage?
+        let aspect: CGFloat
+        let offsetFraction: CGFloat  // (letteringCenter - imageCenter) / width
+        init(_ name: String, w: CGFloat, h: CGFloat, center: CGFloat) {
+            image = Bundle.main.url(forResource: name, withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+            aspect = w / h
+            offsetFraction = (center - w / 2) / w
+        }
+    }
+    // Dark: 1346x268, lettering x 315...1337 (center 826). Light: 1348x276, lettering x 316...1339 (center 827.5).
+    private static let dark = Variant("HeaderWordmark", w: 1346, h: 268, center: 826)
+    private static let light = Variant("HeaderWordmark-Light", w: 1348, h: 276, center: 827.5)
+
+    var body: some View {
+        Group {
+            let v = colorScheme == .dark ? Self.dark : Self.light
+            if let img = v.image {
+                let h = scale.size(44), w = h * v.aspect
+                Image(nsImage: img)
+                    .resizable()
+                    .frame(width: w, height: h)
+                    .offset(x: -w * v.offsetFraction)
+            } else {
+                Text("Quick Study").font(scale.font(28, weight: .semibold)).lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Quick Study")
     }
 }

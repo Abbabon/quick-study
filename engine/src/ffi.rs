@@ -53,6 +53,14 @@ impl SearchIndex {
         SearchResult { hits: r.hits, total: r.total as u32 }
     }
 
+    /// One page of the same ranking as `search`: `limit` hits after skipping `offset`. `total` is
+    /// still the full match count. Re-ranks up to `offset + limit` (top-k selection, cheap).
+    pub fn search_page(&self, query: String, offset: u32, limit: u32) -> SearchResult {
+        let (o, l) = (offset as usize, limit as usize);
+        let r = self.0.search(&query, o + l);
+        SearchResult { hits: r.hits.into_iter().skip(o).collect(), total: r.total as u32 }
+    }
+
     /// Plain name ranking with no filter syntax and a caller-chosen limit (autocomplete).
     pub fn search_name(&self, name: String, limit: u32) -> Vec<Hit> {
         self.0.search_counted(&name, &[], limit as usize).hits
