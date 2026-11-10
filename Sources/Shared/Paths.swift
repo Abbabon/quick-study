@@ -29,6 +29,8 @@ public enum Paths {
         return dir
     }
 
+    /// Card images, named by Scryfall card id; per-printing art shares it (a printing id is a card
+    /// id). Written by the fetcher and, for single hovered printings, by the app (atomic move).
     public static var imagesDir: URL {
         let dir = supportDir.appendingPathComponent("images", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -88,5 +90,13 @@ public enum Paths {
 
     public static func artURL(forIllustrationID id: String) -> URL {
         artDir.appendingPathComponent("\(id).jpg", isDirectory: false)
+    }
+}
+
+extension Paths {
+    /// Scryfall CDN URL of a card/printing's front image (a pure function of the id).
+    public static func remoteImageURL(forCardID id: String) -> URL? {
+        guard id.count >= 2, id.allSatisfy({ $0.isASCII }) else { return nil }
+        return URL(string: "https://cards.scryfall.io/normal/front/\(id.prefix(1))/\(id.dropFirst().prefix(1))/\(id).jpg")
     }
 }

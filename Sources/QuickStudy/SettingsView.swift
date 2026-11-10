@@ -222,6 +222,7 @@ struct SettingsView: View {
     @AppStorage("appUpdateAutoCheck") private var appUpdateAutoCheck: Bool = true
     @AppStorage("showRecentlyAdded") private var showRecentlyAdded: Bool = true
     @AppStorage(CardZoomSetting.storageKey) private var zoomPercent: Double = CardZoomSetting.defaultPercent
+    @AppStorage(FetcherProcess.printingArtKey) private var downloadPrintingArt: Bool = false
     @AppStorage("showMTGOPrintings") private var showMTGOPrintings: Bool = true
     @AppStorage("showArenaPrintings") private var showArenaPrintings: Bool = true
     @AppStorage(Appearance.storageKey) private var appearanceRaw: String = Appearance.defaultValue.rawValue
@@ -457,6 +458,11 @@ struct SettingsView: View {
                 .padding(.bottom, 16)
 
             SettingsCard {
+                SettingsRow(symbol: "square.stack.3d.down.right.fill", style: TileStyle(0x7A45B6, 0x5B45C2),
+                            label: "Download art for every printing",
+                            sub: "~80,000 extra images, ~8 GB. Off: hovering a printing fetches just that one") {
+                    Toggle("", isOn: $downloadPrintingArt).labelsHidden().toggleStyle(.switch)
+                }
                 SettingsRow(symbol: "photo.fill", style: TileStyle(0xFF5E8A, 0xE0457A),
                             label: "Image cache", sub: "Downloaded card art") {
                     Text(model.imageCacheSizeFormatted)
@@ -469,7 +475,8 @@ struct SettingsView: View {
                         .disabled(model.refreshState != .idle)
                 }
             }
-            Footnote(text: "The card database and images power search and previews.")
+            Footnote(text: "The card database and images power search and previews. Turning off per-printing art keeps files already downloaded (Clear Image Cache removes them).")
+            .onChange(of: downloadPrintingArt) { _, on in if on { model.startPrintingArtDownload() } }
 
             SectionHeader(text: "Games")
                 .padding(.top, 18)

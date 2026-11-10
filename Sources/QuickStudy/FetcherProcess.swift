@@ -29,6 +29,9 @@ final class FetcherProcess {
         let newCards: Int?
     }
 
+    /// Settings toggle: refreshes and image downloads also fetch art for every printing.
+    static let printingArtKey = "downloadPrintingArt"
+
     enum Mode {
         case full           // json → ingest → sets → printings → images
         case ingestOnly     // json → ingest (no images, no printings) — silent background sync
@@ -89,7 +92,11 @@ final class FetcherProcess {
         }
         let process = Process()
         process.executableURL = path
-        process.arguments = mode.arguments
+        var args = mode.arguments
+        if UserDefaults.standard.bool(forKey: Self.printingArtKey), mode == .full || mode == .imagesOnly {
+            args.append("--printing-art")
+        }
+        process.arguments = args
 
         let outPipe = Pipe()
         let errPipe = Pipe()
