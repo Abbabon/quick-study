@@ -105,9 +105,9 @@ if [[ "$ADHOC" == "0" ]]; then
 
     APP_ENTITLEMENTS="$DIST/QuickStudy-signed.entitlements"
     cp "$ROOT/Resources/QuickStudy.entitlements" "$APP_ENTITLEMENTS"
-    plutil -insert "com.apple.application-identifier" \
+    plutil -insert 'com\.apple\.application-identifier' \
         -string "$TEAM_ID.$BUNDLE_ID" "$APP_ENTITLEMENTS"
-    plutil -insert "com.apple.developer.team-identifier" \
+    plutil -insert 'com\.apple\.developer\.team-identifier' \
         -string "$TEAM_ID" "$APP_ENTITLEMENTS"
 
     SIGN_IDENTITY="$QS_APP_IDENTITY"
