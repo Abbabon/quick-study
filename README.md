@@ -80,7 +80,7 @@ The `MTG_FETCHER_PATH` env var is only needed for the un-bundled dev run; the `.
 
 ## App icon
 
-The icon source is `Resources/AppIcon-1024.png`; `Resources/AppIcon.icns` is built from it with `sips` + `iconutil` and copied into the bundle by `build-app.sh`.
+The icon source is `Resources/AppIcon.icon` (Icon Composer); `scripts/compile-icon.sh` compiles it with `actool` (Xcode 26+) into `Assets.car` + `AppIcon.icns` in the bundle.
 
 ## First run
 
@@ -133,8 +133,7 @@ If you previously used the app under its earlier name (MTGSpotlight), the data d
 │   └── SearchEngineTests/
 ├── Resources/
 │   ├── Info.plist
-│   ├── AppIcon-1024.png
-│   └── AppIcon.icns
+│   └── AppIcon.icon/
 ├── scripts/
 │   └── build-app.sh
 └── docs/
