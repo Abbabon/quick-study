@@ -176,6 +176,12 @@ pub fn upsert_printings(c: &mut Connection, ps: &[Printing]) -> Result<()> {
     Ok(())
 }
 
+/// Every printing id (the keys of per-printing art).
+pub fn printing_ids(c: &Connection) -> Result<Vec<String>> {
+    let mut st = c.prepare("SELECT printing_id FROM printings")?;
+    Ok(st.query_map([], |r| r.get(0))?.collect::<std::result::Result<_, _>>()?)
+}
+
 /// Batched `image_path` writes (one transaction for the whole slice).
 pub fn set_image_paths(c: &mut Connection, ids: &[String]) -> Result<()> {
     let tx = c.transaction()?;

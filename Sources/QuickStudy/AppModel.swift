@@ -791,6 +791,14 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Called when the "art for every printing" setting is switched on. Without printings in the
+    /// DB there is nothing to download yet, so do a full refresh (which ingests them); otherwise
+    /// reuse the on-disk bulk JSON (`--images-only --printing-art`).
+    func startPrintingArtDownload() {
+        let haveFilled = ((try? store?.meta(key: "printings_updated_at")) ?? nil) != nil
+        if haveFilled { startImageDownload() } else { startRefresh(skipImages: false) }
+    }
+
     /// User dismissed the prompt — suppress it until a strictly newer stamp appears.
     func dismissUpdate() {
         if let stamp = availableUpdateStamp {

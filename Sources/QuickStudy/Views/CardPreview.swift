@@ -29,6 +29,8 @@ struct CardPreview: View {
     @State private var showingBack = false
     @State private var flipAngle: Double = 0
     @State private var isFlipping = false
+    /// Printing under the pointer in the Printings list; its art temporarily replaces the card's.
+    @State private var hoveredPrinting: Card.Printing?
 
     var body: some View {
         let scale = UIScale(value: uiScaleValue)
@@ -42,6 +44,7 @@ struct CardPreview: View {
         .padding(scale.pad(16))
         .onAppear(perform: refreshFlipState)
         .onChange(of: card?.id) { _, _ in
+            hoveredPrinting = nil
             showingBack = false
             flipAngle = 0
             isFlipping = false
@@ -53,9 +56,11 @@ struct CardPreview: View {
     private func content(card: Card, scale: UIScale) -> some View {
         HStack(alignment: .top, spacing: scale.pad(16)) {
             CardImageView(
-                cacheKey: showingBack ? "\(card.id)_back" : card.id,
-                fileURL: showingBack ? Paths.backImageURL(forCardID: card.id)
-                                     : Paths.imageURL(forCardID: card.id),
+                cacheKey: hoveredPrinting?.id ?? (showingBack ? "\(card.id)_back" : card.id),
+                fileURL: hoveredPrinting.map { Paths.imageURL(forCardID: $0.id) }
+                    ?? (showingBack ? Paths.backImageURL(forCardID: card.id)
+                                    : Paths.imageURL(forCardID: card.id)),
+                remoteURL: hoveredPrinting.flatMap { Paths.remoteImageURL(forCardID: $0.id) },
                 identity: card.identity
             )
             .cardTilt()
@@ -246,6 +251,9 @@ struct CardPreview: View {
                             .padding(.vertical, scale.pad(2))
                         }
                         .buttonStyle(.plain)
+                        .onHover { inside in
+                            if inside { hoveredPrinting = p } else if hoveredPrinting == p { hoveredPrinting = nil }
+                        }
                         .help("Open \(p.setName) printing on Scryfall")
                     }
                 }
@@ -265,9 +273,12 @@ struct CardPreview: View {
 struct CardImageView: View {
     let cacheKey: String
     let fileURL: URL
+    /// When set and the file is missing, the image is downloaded here and cached at `fileURL`.
+    var remoteURL: URL? = nil
     let identity: ColorIdentity
     @State private var image: NSImage?
     @State private var loadGeneration = 0
+    @State private var loadTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -282,7 +293,7 @@ struct CardImageView: View {
         }
         .onAppear(perform: load)
         // Reused as the selection (or shown face) changes — reload when the key does.
-        .onChange(of: cacheKey) { _, _ in image = nil; loadGeneration += 1; load() }
+        .onChange(of: cacheKey) { _, _ in loadTask?.cancel(); image = nil; loadGeneration += 1; load() }
     }
 
     private func load() {
@@ -293,13 +304,30 @@ struct CardImageView: View {
         let key = cacheKey
         let url = fileURL
         let gen = loadGeneration
-        Task.detached(priority: .userInitiated) {
-            guard FileManager.default.fileExists(atPath: url.path),
-                  let img = NSImage(contentsOf: url) else { return }
+        let remote = remoteURL
+        loadTask = Task.detached(priority: .userInitiated) {
+            var img = FileManager.default.fileExists(atPath: url.path) ? NSImage(contentsOf: url) : nil
+            if img == nil, let remote {
+                // Debounce so sweeping the pointer down the list doesn't fire a request per row;
+                // a newer hover cancels this task during the sleep or the download.
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                if Task.isCancelled { return }
+                img = await Self.fetch(remote, to: url)
+            }
+            guard let img, !Task.isCancelled else { return }
             ThumbnailCache.store(img, for: key)
             await MainActor.run {
                 if self.loadGeneration == gen { self.image = img }
             }
         }
+    }
+
+    /// Downloads to a temp file and moves it into the shared images dir (same location the fetcher uses).
+    private static func fetch(_ remote: URL, to dest: URL) async -> NSImage? {
+        guard let (tmp, resp) = try? await URLSession.shared.download(from: remote),
+              (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        try? FileManager.default.removeItem(at: dest)
+        guard (try? FileManager.default.moveItem(at: tmp, to: dest)) != nil else { return nil }
+        return NSImage(contentsOf: dest)
     }
 }

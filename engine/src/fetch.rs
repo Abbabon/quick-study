@@ -5,13 +5,14 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 #[derive(Default, Debug, Clone, Copy)]
-pub struct Flags { pub images_only: bool, pub no_images: bool, pub artwork: bool, pub download_art: bool, pub printings: bool }
+pub struct Flags { pub images_only: bool, pub no_images: bool, pub artwork: bool, pub download_art: bool, pub printings: bool, pub printing_art: bool }
 
 impl Flags {
     pub fn parse(args: &[String]) -> Self {
         let has = |f: &str| args.iter().any(|a| a == f);
         Self { images_only: has("--images-only"), no_images: has("--no-images"), artwork: has("--artwork"),
-            download_art: has("--download-art"), printings: has("--printings") }
+            download_art: has("--download-art"), printings: has("--printings"),
+            printing_art: has("--printing-art") }
     }
 }
 
@@ -60,8 +61,9 @@ pub async fn run(flags: Flags, em: &Emitter) -> Result<()> {
             client.download_bulk(&info, &bulk).await?;
         }
         let refs = scryfall::parse_image_refs(&bulk)?;
-        let items = images::card_items(&refs);
+        let mut items = images::card_items(&refs);
         drop(refs);
+        if flags.printing_art { images::add_printing_items(&mut items, &db::printing_ids(&conn)?); }
         images::download(&client, items, Some(&mut conn), prog("images")).await?;
         em.msg("done", "images complete");
         return Ok(());
@@ -117,8 +119,9 @@ pub async fn run(flags: Flags, em: &Emitter) -> Result<()> {
         return Ok(());
     }
     let refs = scryfall::parse_image_refs(&bulk)?;
-    let items = images::card_items(&refs);
+    let mut items = images::card_items(&refs);
     drop(refs);
+    if flags.printing_art { images::add_printing_items(&mut items, &db::printing_ids(&conn)?); }
     images::download(&client, items, Some(&mut conn), prog("images")).await?;
     em.emit("done", None, None, Some("complete"), Some(new_cards));
     Ok(())
