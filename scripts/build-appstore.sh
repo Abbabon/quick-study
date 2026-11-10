@@ -79,6 +79,7 @@ cp "$FETCHER"              "$APP/Contents/MacOS/mtg-fetcher"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
 cp "$ROOT/Resources/HeaderWordmark.png" "$APP/Contents/Resources/HeaderWordmark.png"
+cp "$ROOT/Resources/HeaderWordmark-Light.png" "$APP/Contents/Resources/HeaderWordmark-Light.png"
 
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
     cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"

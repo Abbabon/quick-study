@@ -145,32 +145,38 @@ enum SetIconCache {
     }
 }
 
-/// Wordmark image (Resources/HeaderWordmark.png, copied into Contents/Resources by build-app.sh,
-/// trimmed to the artwork). Bone-white art: used as-is in dark appearance, tinted `.primary`
-/// (template) in light so it doesn't vanish. Falls back to text when the bundle lacks it (swift test).
+/// Wordmark image (Resources/HeaderWordmark.png for dark, HeaderWordmark-Light.png for light; copied
+/// into Contents/Resources by the build scripts, trimmed to the artwork). Falls back to text when the
+/// bundle lacks them (swift test).
 struct AppTitleHeader: View {
     let scale: UIScale
     @Environment(\.colorScheme) private var colorScheme
 
-    // Trimmed image is 1346x268 px; the "QUICK STUDY" lettering spans x 315...1337, so its center
-    // (826) sits 153 px right of the image center (673). Shift left by that share of the width
-    // so the lettering, not glyph+text, is centered over the column below.
-    private static let imageAspect: CGFloat = 1346.0 / 268.0
-    private static let letteringOffsetFraction: CGFloat = 153.0 / 1346.0
-
-    private static let image: NSImage? = Bundle.main.url(forResource: "HeaderWordmark", withExtension: "png")
-        .flatMap { NSImage(contentsOf: $0) }
+    // Per variant: pixel size of the trimmed image and the x-center of the "QUICK STUDY" lettering
+    // (alpha column scan), so the lettering, not glyph+text, is centered over the column below.
+    private struct Variant {
+        let image: NSImage?
+        let aspect: CGFloat
+        let offsetFraction: CGFloat  // (letteringCenter - imageCenter) / width
+        init(_ name: String, w: CGFloat, h: CGFloat, center: CGFloat) {
+            image = Bundle.main.url(forResource: name, withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+            aspect = w / h
+            offsetFraction = (center - w / 2) / w
+        }
+    }
+    // Dark: 1346x268, lettering x 315...1337 (center 826). Light: 1348x276, lettering x 316...1339 (center 827.5).
+    private static let dark = Variant("HeaderWordmark", w: 1346, h: 268, center: 826)
+    private static let light = Variant("HeaderWordmark-Light", w: 1348, h: 276, center: 827.5)
 
     var body: some View {
         Group {
-            if let img = Self.image {
-                let h = scale.size(44), w = h * Self.imageAspect
+            let v = colorScheme == .dark ? Self.dark : Self.light
+            if let img = v.image {
+                let h = scale.size(44), w = h * v.aspect
                 Image(nsImage: img)
-                    .renderingMode(colorScheme == .dark ? .original : .template)
                     .resizable()
                     .frame(width: w, height: h)
-                    .offset(x: -w * Self.letteringOffsetFraction)
-                    .foregroundStyle(.primary)
+                    .offset(x: -w * v.offsetFraction)
             } else {
                 Text("Quick Study").font(scale.font(28, weight: .semibold)).lineLimit(1)
             }
