@@ -132,7 +132,7 @@ mode, separate account, or a keychain-backed signer). **Unverified:** whether Ba
 - Each upload needs a unique, higher build number (`CFBundleVersion`).
 - `build-appstore.sh` has an older `QS_UPLOAD=1` path that puts the password in env/args. Prefer `upload-appstore.sh`.
 - Forum reports of altool auth timeouts on macOS pkgs; fallback is the `buildUploads` API (needs the `.p8`).
-- altool here is Xcode 27.0.5 (2.1); `--upload-package` takes `-t macos`, `--apple-id`, `--bundle-id`,
+- altool here is version 27.0.5 (2.1); `--upload-package` takes `-t macos`, `--apple-id`, `--bundle-id`,
   `--bundle-version`, `--bundle-short-version-string` (checked with `man altool`).
 
 ## Sources
