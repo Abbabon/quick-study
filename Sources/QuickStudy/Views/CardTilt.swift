@@ -14,13 +14,13 @@ struct CardTilt: ViewModifier {
 
     func body(content: Content) -> some View {
         let p = pointer ?? .zero
-        let foil = FoilStyle(rawValue: foilRaw).flatMap { $0.isUnlocked ? $0 : nil } ?? .none
         return content
-            .overlay(FoilLayer(style: foil, pointer: p, cornerRadius: cornerRadius, source: content))
+            .modifier(FoilEffect(style: FoilStyle(stored: foilRaw), pointer: p))
             .overlay(
-                RadialGradient(colors: [.white.opacity(pointer == nil ? 0 : 0.22), .clear],
-                               center: UnitPoint(x: 0.5 + p.x * 0.5, y: 0.5 + p.y * 0.5),
-                               startRadius: 0, endRadius: 220)
+                // Sized relative to the card so the sheen looks the same in the preview and the zoom.
+                EllipticalGradient(colors: [.white.opacity(pointer == nil ? 0 : 0.22), .clear],
+                                   center: UnitPoint(x: 0.5 + p.x * 0.5, y: 0.5 + p.y * 0.5),
+                                   startRadiusFraction: 0, endRadiusFraction: 0.65)
                     .blendMode(.softLight)
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                     .allowsHitTesting(false)
