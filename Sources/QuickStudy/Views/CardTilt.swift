@@ -10,10 +10,13 @@ struct CardTilt: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Cursor position normalised to -1...1 from the view's center; nil when not hovering.
     @State private var pointer: CGPoint?
+    @AppStorage(FoilStyle.storageKey) private var foilRaw = FoilStyle.none.rawValue
 
     func body(content: Content) -> some View {
         let p = pointer ?? .zero
+        let foil = FoilStyle(rawValue: foilRaw).flatMap { $0.isUnlocked ? $0 : nil } ?? .none
         return content
+            .overlay(FoilLayer(style: foil, pointer: p, cornerRadius: cornerRadius, source: content))
             .overlay(
                 RadialGradient(colors: [.white.opacity(pointer == nil ? 0 : 0.22), .clear],
                                center: UnitPoint(x: 0.5 + p.x * 0.5, y: 0.5 + p.y * 0.5),
