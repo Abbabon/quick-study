@@ -24,12 +24,17 @@ built; the submit script is the next step. Anything marked **unverified** was no
 
 1. Upload credential. Create an app-specific password at account.apple.com, then in Terminal (you type it):
    ```sh
-   xcrun altool --store-password-in-keychain-item QS_ASC -u <apple-id> -p <app-specific-password>
+   xcrun altool --store-password-in-keychain-item QS_ASC --username <apple-id> --app-password <app-specific-password>
    ```
    First upload may show a keychain prompt for altool: click "Always Allow" once. The agent must run in
-   your logged-in GUI session with the keychain unlocked. **Unverified:** that altool then finds the item by name
-   alone; if it complains, the script prints the setup command.
-   If your account has several providers, `xcrun altool --list-providers` and export `QS_PROVIDER_ID`.
+   your logged-in GUI session with the keychain unlocked. altool does **not** infer the username from the
+   keychain item (verified: it fails with error 30 without `--username` and `--provider-public-id`), so the
+   script requires two env vars:
+   ```sh
+   export ASC_USERNAME=<apple-id>
+   xcrun altool --list-providers -u "$ASC_USERNAME" -p @keychain:QS_ASC   # prints the provider public ID
+   export ASC_PROVIDER_ID=<public-id>
+   ```
 2. Submit credential (only for the future submit script). App Store Connect > Users and Access >
    Integrations > App Store Connect API: create a key with role **App Manager** (least that can submit; **unverified**
    whether Developer suffices for review submission). Download `AuthKey_<KEYID>.p8` once, move it to
@@ -49,10 +54,11 @@ built; the submit script is the next step. Anything marked **unverified** was no
 1. Bump version/build in `Resources/Info.plist`; build on a branch.
 2. `./scripts/build-appstore.sh` produces `dist-appstore/QuickStudy.pkg` (needs `QS_APP_IDENTITY`,
    `QS_INSTALLER_IDENTITY`, `QS_PROVISION_PROFILE`).
-3. `./scripts/upload-appstore.sh` reads bundle id, version and build from Info.plist, runs `altool --validate-app`,
+3. With `ASC_USERNAME` and `ASC_PROVIDER_ID` set, `./scripts/upload-appstore.sh` reads bundle id, version and build
+   from the Info.plist inside the pkg (not any `.app` on disk; `QS_DRY_RUN=1` prints the commands only), runs `altool --validate-app`,
    then `--upload-package ... --wait`. Do not run it twice for the same build number (Apple rejects duplicates).
 4. Wait for processing. With keychain auth: `xcrun altool --build-status --apple-id 6792768370 --bundle-id
-   com.abbabon.quickstudy --bundle-version <build> --bundle-short-version-string <ver> -p @keychain:QS_ASC --wait`.
+   com.abbabon.quickstudy --bundle-version <build> --bundle-short-version-string <ver> -u "$ASC_USERNAME" -p @keychain:QS_ASC --provider-public-id "$ASC_PROVIDER_ID" --wait`.
    With the API: `GET /v1/builds?filter[app]=6792768370&filter[version]=<build>&filter[preReleaseVersion.version]=<ver>`
    until `attributes.processingState` is `VALID` (other values: `PROCESSING`, `FAILED`, `INVALID`).
 5. *(API, planned `scripts/submit-appstore.sh`)* Attach the build:
