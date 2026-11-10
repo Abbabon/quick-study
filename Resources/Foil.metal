@@ -123,24 +123,38 @@ float stars(Card c, float2 pointer, float density, float coverage) {
     return finish(c, col);
 }
 
-/// Etched foil: metallic, partly desaturated sheen with a fine grain on the frame and text box;
-/// the art window stays (almost) non-foil, the way real etched cards are printed.
+/// Etched foil: metallic paint rather than a laminate, so it reads as matte, granular metal: the
+/// frame and text box keep their own colour but turn metallic (a broad light/dark sheen that slides
+/// with the tilt, like a sheet of brushed metal), covered in fine metal flecks that glint one by one.
+/// The art window stays non-foil and black ink stays black, the way real etched cards are printed.
 [[ stitchable ]] half4 foilEtched(float2 pos, SwiftUI::Layer layer, float2 size, float2 pointer) {
     Card c = makeCard(pos, layer, size, pointer);
     float2 uv = c.uv;
     float art = smoothstep(0.07, 0.085, uv.x) * (1.0 - smoothstep(0.915, 0.93, uv.x))
               * smoothstep(0.10, 0.115, uv.y) * (1.0 - smoothstep(0.55, 0.565, uv.y));
-    float frame = (1.0 - 0.85 * art) * inkWindow(c, 0.05, 0.2);
-    float s = streak(c, 0.26);
-    // brushed metal: fine horizontal streaks (low frequency across, high down the card) and an
-    // anisotropic highlight stretched along the brushing, like light on a satin metal frame
-    float brushed = vnoise(float2(c.q.x * 2.0, c.q.y * 240.0)) * 0.6 + vnoise(float2(c.q.x * 4.0 + 3.0, c.q.y * 70.0)) * 0.4;
-    float2 d = (c.q - c.light) * float2(0.45, 1.8);
-    float aniso = exp(-dot(d, d) / 0.04);
-    float3 tint = mix(float3(1.0), spectrum(dot(c.q, float2(0.6, 0.8)) * 0.9 - pointer.x * 0.35) + 0.35, 0.14);
-    float3 metal = mix(float3(c.L), c.base, 0.5);
-    float sheen = 0.76 + 0.14 * brushed + s * 0.3 * (0.6 + 0.4 * brushed) + aniso * 0.5 * (0.4 + 0.6 * brushed);
-    float3 col = mix(c.base, metal * sheen * tint, frame);
+    float paint = (1.0 - 0.9 * art) * inkWindow(c, 0.03, 0.22);
+
+    // broad metallic reflection: bright and dark zones along the diagonal, sliding with the pointer
+    float diag = dot(c.q, float2(0.8, 0.6));
+    float sheen = 0.5 + 0.5 * cos(6.2831853 * (diag * 1.1 - pointer.x * 0.45 - pointer.y * 0.3));
+    sheen = 0.5 + 0.8 * sheen * sheen + streak(c, 0.16) * 0.3;
+
+    // flecks: a round fleck in some cells of a fine card-relative grid, each glinting at its own
+    // tilt angle; between them a soft, smooth grain (no per-cell blocks, which read as pixels)
+    float2 g = c.q * 170.0;
+    float2 id = floor(g);
+    float2 f = fract(g) - 0.5 - 0.6 * (float2(hash(id + 1.3), hash(id + 4.7)) - 0.5);
+    float rad = (0.12 + 0.12 * hash(id + 2.3)) * step(hash(id + 8.8), 0.55);
+    float px = c.px * 170.0;
+    float fleck = 1.0 - smoothstep(rad - px * 0.6, rad + px * 0.6, length(f));
+    float glint = pow(max(0.0, cos(6.2831853 * hash(id) + pointer.x * 6.0 - pointer.y * 5.0)), 8.0);
+    float grain = (vnoise(c.q * 380.0) - 0.5) * 0.3 + (vnoise(c.q * 140.0 + 9.0) - 0.5) * 0.14;
+
+    // the paint keeps the frame's hue (red frame -> copper, white -> silver) but loses some colour
+    float3 metal = mix(float3(c.L), c.base, 0.6);
+    float3 tint = mix(float3(1.0), c.base / max(max(c.base.r, max(c.base.g, c.base.b)), 0.05), 0.3);
+    float3 painted = metal * (sheen + grain) + tint * fleck * glint * (0.35 + 0.5 * sheen) * 0.8;
+    float3 col = mix(c.base, painted, paint);
     return finish(c, col);
 }
 
@@ -161,20 +175,30 @@ float stars(Card c, float2 pointer, float density, float coverage) {
     return finish(c, col);
 }
 
-/// Surge foil: vivid rainbow in rippling wavy bands across the whole card, flowing with the tilt.
+/// Surge foil: over the whole card (frame and art), a field of parallel streaks that all run one way,
+/// up-right on the diagonal, like light combed through grass: near-white highlights on a silver
+/// ground, tinted by pastel rainbow zones that drift across the streaks. Each streak flashes at its
+/// own tilt angle and the hues sweep with the pointer, while the streaks themselves stay put.
 [[ stitchable ]] half4 foilSurge(float2 pos, SwiftUI::Layer layer, float2 size, float2 pointer) {
     Card c = makeCard(pos, layer, size, pointer);
-    float2 q = c.q;
-    float warp = fbm(q * 2.2);
-    float w = (q.y + sin(q.x * 9.0 + warp * 4.0) * 0.035 + sin(q.x * 23.0 - q.y * 7.0 + warp * 6.0) * 0.012
-               + warp * 0.12) * 24.0
-            + pointer.y * 2.0 + pointer.x * 1.2;
-    float ripple = 0.5 + 0.5 * sin(w * 6.2831853);
-    float3 rb = spectrum(w * 0.045 + dot(q, float2(0.7, 0.7)) * 0.8 - pointer.x * 0.4);
-    float s = streak(c, 0.35);
+    const float2 along = normalize(float2(0.55, -0.83));
+    const float2 across = float2(-along.y, along.x);
+    float a = dot(c.q, across), b = dot(c.q, along);
+    a += (vnoise(float2(b * 2.5, a * 3.0)) - 0.5) * 0.035;   // a gentle surge, lines stay parallel
+    float st = vnoise(float2(a * 62.0, b * 4.5)) * 0.65 + vnoise(float2(a * 170.0 + 11.0, b * 9.0)) * 0.35;
+    float lines = smoothstep(0.42, 0.78, st);
+    // hue drifts slowly across the streaks (zones of pink, peach, cyan), the streaks themselves are
+    // near-white highlights on a silver ground
+    float3 rb = spectrum(vnoise(float2(a * 9.0, b * 1.5)) * 1.2 + vnoise(float2(a * 24.0 + 3.0, b * 2.0)) * 0.5
+                         + a * 2.2 - pointer.x * 0.6 - pointer.y * 0.45);
+    float flash = 0.4 + 0.6 * pow(0.5 + 0.5 * cos(6.2831853 * (vnoise(float2(a * 20.0 + 5.0, b * 2.0)) * 1.5
+                                                                + a * 2.0 - pointer.x * 0.7 + pointer.y * 0.55)), 2.0);
+    float hi = lines * flash;
+    float3 pastel = mix(float3(1.0), rb, 0.52 - 0.35 * hi * hi);
+    float s = streak(c, 0.32);
     float ink = inkWindow(c, 0.03, 0.5);
-    float3 refl = 0.78 + rb * (0.4 + 0.6 * s) * (0.45 + 0.75 * ripple);
+    float3 refl = mix(float3(0.74), pastel * (1.2 + 0.3 * s), hi) * mix(float3(1.0), rb, 0.15);
     float3 col = c.base * mix(float3(1.0), refl, ink);
-    col += rb * ripple * s * 0.1 * ink + glare(c, 0.3) * 0.1 * c.L;
+    col += pastel * hi * (0.05 + 0.12 * s) * ink + glare(c, 0.3) * 0.08 * c.L;
     return finish(c, col);
 }
