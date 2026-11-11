@@ -20,6 +20,7 @@ git worktree remove ../quick-study-<feature>
 Guidelines:
 - One worktree per in-flight feature; name the branch `feat/<feature>` and the directory `quick-study-<feature>`.
 - Keep each worktree's changes scoped to its own feature — don't mix unrelated work onto one branch.
+- **Remove the worktree and delete its branch right after the branch merges into master** (rules in `AGENTS.md`).
 - The SPM build cache (`.build`) is per-worktree; the first `swift build` in a fresh worktree may re-fetch/re-compile dependencies.
 - The shared SQLite DB and image dir live under `~/Library/Application Support/QuickStudy/` and are *not* per-worktree — concurrent fetcher runs across worktrees write the same DB, so avoid running `mtg-fetcher --printings` from two worktrees at once.
 
